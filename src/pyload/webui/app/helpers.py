@@ -52,7 +52,13 @@ def get_redirect_url(fallback=None):
         except werkzeug.routing.BuildError:
             pass
 
-    return urljoin(flask.request.url_root, redirect_url)
+    # no. flask.request.url_root is the internal host like http://10.0.0.1:1234/
+    # this breaks when pyload is behind a reverse proxy like nginx
+    # where we have a different external host like https://example.com/
+    #
+    # return urljoin(flask.request.url_root, redirect_url)
+
+    return redirect_url
 
 
 def render_base(messages):
