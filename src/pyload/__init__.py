@@ -26,7 +26,8 @@ PKGNAME = "pyload-ng"
 PKGDIR = pkg_resources.resource_filename(__name__, "")
 
 USERHOMEDIR = os.path.expanduser("~")
-os.chdir(USERHOMEDIR)
+# why?!
+#os.chdir(USERHOMEDIR)
 
 # FIXME move version from VERSION to src/pyload/__init__.py
 #__version__ = pkg_resources.get_distribution(PKGNAME).parsed_version.base_version
