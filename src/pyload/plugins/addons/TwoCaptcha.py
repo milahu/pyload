@@ -33,6 +33,7 @@ class TwoCaptcha(BaseAddon):
             True,
         #), TASK_TYPES.keys()), # FIXME make this work
         ), (
+            # TODO more
             #"ReCaptcha",
             #"HCaptcha",
             "CutCaptcha",
@@ -57,6 +58,7 @@ class TwoCaptcha(BaseAddon):
 
     TASK_TYPES = {
         "image": "ImageToTextTask",
+        # TODO more
         #"ReCaptcha": "RecaptchaV2TaskProxyless",
         #"HCaptcha": "HCaptchaTaskProxyless",
         "CutCaptcha": "CutCaptchaTaskProxyless",
