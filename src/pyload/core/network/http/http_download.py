@@ -89,6 +89,9 @@ class HTTPDownload:
     def _copy_chunks(self):
         init = self.info.get_chunk_filename(0)  #: initial chunk name
 
+        # FIXME append chunk 1 2 3 ... to chunk 0 file
+        # the chunk 0 file does not have the "chunk0" file extension
+
         if self.info.get_count() > 1:
             with open(init, mode="rb+") as fo:  #: first chunk file
                 for i in range(1, self.info.get_count()):
@@ -160,7 +163,7 @@ class HTTPDownload:
         if not resume:
             self.info.clear()
             self.info.add_chunk(
-                f"{self.filename}.chunk0", (0, 0)
+                self.filename, (0, 0)
             )  #: create an initial entry)
 
         self.chunks = []
@@ -281,7 +284,7 @@ class HTTPDownload:
                         #: let first chunk load the rest and update the info file
                         init.reset_range()
                         self.info.clear()
-                        self.info.add_chunk(f"{self.filename}.chunk0", (0, self.size))
+                        self.info.add_chunk(self.filename, (0, self.size))
                         self.info.save()
                     elif failed:
                         raise ex or Exception
