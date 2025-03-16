@@ -214,6 +214,12 @@ def _parse_args(cmd_args):
         default=os.path.join(Core.DEFAULT_TMPDIR, "pyload.pid"),
     )
     parser.add_argument(
+        "--host",
+        help="set webinterface host in pyload.cfg. example: 0.0.0.0",
+        default=None,
+        type=str,
+    )
+    parser.add_argument(
         "--port",
         help="set webinterface port in pyload.cfg",
         default=None,
@@ -306,7 +312,7 @@ def main(cmd_args=sys.argv[1:]):
     Entry point for console_scripts.
     """
     args = _parse_args(cmd_args)
-    core_args = (args.userdir, args.tempdir, args.storagedir, args.debug, args.reset, args.dry_run, args.port)
+    core_args = (args.userdir, args.tempdir, args.storagedir, args.debug, args.reset, args.dry_run, args.host, args.port)
 
     if args.quit:
         quit_instance(args.pidfile)
