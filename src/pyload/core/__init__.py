@@ -82,6 +82,7 @@ class Core:
 
     # NOTE: should `reset` restore the user config as well?
     def __init__(self, userdir, tempdir, storagedir, debug=None, reset=False, dry=False, host=None, port=None):
+        # print("host port", host, port); raise 123
         self._running = Event()
         self._exiting = False
         self._do_restart = False
@@ -144,6 +145,8 @@ class Core:
 
         else:
             self.config.set("general", "storage_folder", storagedir)
+
+        # print("host port", host, port); raise 123
 
         if host:
             self.config.set("webui", "host", host)
