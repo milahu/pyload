@@ -11,7 +11,7 @@ pkgs.mkShell {
     # TODO are these actually available on runtime?
     unrar # unfree
     rhino
-    spidermonkey
+    spidermonkey_91
     gocr
 
     (python3.withPackages (pp: with pp; [
