@@ -25,7 +25,7 @@ class WebServerThread(threading.Thread):
         self.keyfile = self.pyload.config.get("webui", "ssl_keyfile")
         self.certchain = self.pyload.config.get("webui", "ssl_certchain") or None
 
-        self.host = self.pyload.config.get("webui", "host")
+        self.host = self.pyload.config.get("webui", "host") or "localhost"
         self.port = self.pyload.config.get("webui", "port")
         self.prefix = self.pyload.config.get("webui", "prefix")
 
@@ -80,6 +80,8 @@ class WebServerThread(threading.Thread):
                 )
             )
             self.use_ssl = False
+
+        assert self.host != None
 
         self.log.info(
             self._("Starting webserver: {scheme}://{host}:{port}").format(
