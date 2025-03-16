@@ -81,7 +81,7 @@ class Core:
         return self._debug
 
     # NOTE: should `reset` restore the user config as well?
-    def __init__(self, userdir, tempdir, storagedir, debug=None, reset=False, dry=False, port=None):
+    def __init__(self, userdir, tempdir, storagedir, debug=None, reset=False, dry=False, host=None, port=None):
         self._running = Event()
         self._exiting = False
         self._do_restart = False
@@ -104,7 +104,7 @@ class Core:
         # why?!
         #os.chdir(datadir)
 
-        self._init_config(userdir, tempdir, storagedir, debug, port)
+        self._init_config(userdir, tempdir, storagedir, debug, host, port)
         self._init_log()
         if storagedir is not None:
             self.log.warning("Download folder was specified from the commandline")
@@ -120,7 +120,7 @@ class Core:
         # TODO: Remove...
         self.last_client_connected = 0
 
-    def _init_config(self, userdir, tempdir, storagedir, debug, port=None):
+    def _init_config(self, userdir, tempdir, storagedir, debug, host=None, port=None):
         from .config.parser import ConfigParser
 
         self.userdir = os.path.realpath(userdir)
@@ -144,6 +144,9 @@ class Core:
 
         else:
             self.config.set("general", "storage_folder", storagedir)
+
+        if host:
+            self.config.set("webui", "host", host)
 
         if port:
             self.config.set("webui", "port", port)
