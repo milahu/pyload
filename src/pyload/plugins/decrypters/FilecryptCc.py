@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+# fixme: dont require password
+
 #
 # Test links:
 #   http://filecrypt.cc/Container/64E039F859.html
