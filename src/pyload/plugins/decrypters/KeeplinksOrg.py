@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+# fixme: ValueError: not found LINK_TEXTAREA_PATTERN
+
 #
 # Test links:
 #   https://www.keeplinks.org/p26/65b495f928c4b
