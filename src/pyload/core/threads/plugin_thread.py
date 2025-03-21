@@ -78,7 +78,12 @@ class PluginThread(Thread):
 
     def get_debug_dump(self, pyfile):
         version = self.pyload.api.get_server_version()
-        dump = f"pyLoad {version} Debug Report of {pyfile.pluginname} {pyfile.plugin.__version__} \n\nTRACEBACK:\n {traceback.format_exc()} \n\nFRAMESTACK:\n"
+        try:
+            plugin_version = pyfile.plugin.__version__
+        except AttributeError:
+            # 'PyFile' object has no attribute 'plugin'
+            plugin_version = 0
+        dump = f"pyLoad {version} Debug Report of {pyfile.pluginname} {plugin_version} \n\nTRACEBACK:\n {traceback.format_exc()} \n\nFRAMESTACK:\n"
 
         tb = exc_info()[2]
         stack = []
