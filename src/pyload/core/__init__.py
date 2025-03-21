@@ -643,11 +643,13 @@ class Core:
         except Restart:
             self.restart()
 
-        except (Exit, KeyboardInterrupt, SystemExit):
+        except (Exit, KeyboardInterrupt, SystemExit) as exc:
+            self.log.info(self._(f"got {exc} - calling core.terminate"))
             self.terminate()
 
         except Exception as exc:
             self.log.critical(exc, exc_info=True, stack_info=self.debug > 2)
+            self.log.info(self._(f"got {exc} - calling core.terminate"))
             self.terminate()
             if os.name == "nt":
                 sys.exit(70)
@@ -685,9 +687,12 @@ class Core:
         if self.running:
             self.stop()
             self.log.info(self._("Exiting core..."))
+            # fixme: this can hang
             # self.tsm.exit()
             # self.db.exit()  # NOTE: Why here?
+            self.log.info(self._("Exiting core.logfactory..."))
             self.logfactory.shutdown()
+            self.log.info(self._("Exiting core.logfactory done"))
             # if cleanup:
             # self.log.info(self._("Deleting temp files..."))
             # remove(self.tmpdir)
