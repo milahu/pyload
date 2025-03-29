@@ -11,6 +11,9 @@ from ..base.addon import BaseAddon, threaded
 from ..helpers import forward, str_exc
 
 
+# note: disabled by default
+# https://github.com/pyload/pyload/issues/4561
+
 # TODO: IPv6 support
 class ClickNLoad(BaseAddon):
     __name__ = "ClickNLoad"
@@ -19,7 +22,7 @@ class ClickNLoad(BaseAddon):
     __status__ = "testing"
 
     __config__ = [
-        ("enabled", "bool", "Activated", True),
+        ("enabled", "bool", "Activated", False),
         ("port", "int", "Port", 9666),
         ("extern", "bool", "Listen for external connections", True),
         ("dest", "queue;collector", "Add packages to", "collector"),
