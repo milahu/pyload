@@ -1,10 +1,10 @@
 { lib
-, python3
+, python
 , fetchPypi
 , fetchFromGitHub
 }:
 
-python3.pkgs.buildPythonApplication rec {
+python.pkgs.buildPythonApplication rec {
   pname = "flask-session2";
   version = "1.3.1";
   #version = "1.3.1.2023.06.12";
@@ -35,10 +35,10 @@ python3.pkgs.buildPythonApplication rec {
   '';
 
   nativeBuildInputs = [
-    python3.pkgs.poetry-core
+    python.pkgs.poetry-core
   ];
 
-  propagatedBuildInputs = with python3.pkgs; [
+  propagatedBuildInputs = with python.pkgs; [
     cachelib
     flask
     pytz
