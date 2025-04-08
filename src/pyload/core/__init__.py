@@ -698,6 +698,10 @@ class Core:
             # self.db.exit()  # NOTE: Why here?
             self.log.info(self._("Exiting core.logfactory..."))
             self.logfactory.shutdown()
+            self.log.debug = print
+            self.log.info = print
+            self.log.error = print
+            self.log.warning = print
             self.log.info(self._("Exiting core.logfactory done"))
             # if cleanup:
             # self.log.info(self._("Deleting temp files..."))
