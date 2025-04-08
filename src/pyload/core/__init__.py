@@ -707,6 +707,17 @@ class Core:
             # self.log.info(self._("Deleting temp files..."))
             # remove(self.tmpdir)
 
+        # wait for threads to stop
+        time.sleep(2)
+        # kill remaining threads
+        import threading
+        for thread in threading.enumerate():
+            if not thread.is_alive():
+                continue
+            tid = thread.native_id
+            print("killing thread", tid, thread.name)
+            os._exit(tid)
+
     def stop(self):
         try:
             self.log.debug("Stopping core...")
