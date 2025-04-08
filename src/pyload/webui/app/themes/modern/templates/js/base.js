@@ -181,10 +181,13 @@ $(() => {
     event.preventDefault();
     const formData = new FormData(this);
     const $this = $(this);
+    /*
     if ($this.find("#add_name").val() === "" && $this.find("#add_file").val() === "") {
       alert("{{_('Please Enter a package name.')}}");
       return false;
     } else {
+    */
+    if (true) {
       $.ajax({
         url: "{{url_for('json.add_package')}}",
         method: "POST",
