@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 
-# fixme: dont require password
-
 #
 # Test links:
 #   http://filecrypt.cc/Container/64E039F859.html
@@ -163,6 +161,11 @@ class FilecryptCc(BaseDecrypter):
                 self.data,
             )
             is None
+            or
+            re.search(
+                r'<!--\s*<input[^>]+type="password"',
+                self.data,
+            )
         ):
             self.log_info("not found password input")
             return
