@@ -367,13 +367,19 @@ class Core:
             # verbose
             self.log.debug(f"hot-reload {str_exc(arg)}")
         def jurigged_watch(path):
-            jurigged.watch(path + "/**/*.py", jurigged_logger)
+            return jurigged.watch(path + "/**/*.py", jurigged_logger)
         self.log.info(f"Starting hot-reload from userdir {self.userdir}")
         jurigged_watch(self.userdir)
         self.sourcedir = os.path.dirname(os.path.dirname(__file__))
         if os.access(__file__, os.W_OK):
             self.log.info(f"Starting hot-reload from sourcedir {self.sourcedir}")
-            jurigged_watch(self.sourcedir)
+            self._jurigged_watcher = jurigged_watch(self.sourcedir)
+
+    def _stop_hotreload_code(self):
+        try:
+            self._jurigged_watcher.stop()
+        except AttributeError:
+            pass
 
     def _init_hotreload_plugins(self):
         # start hot-reload for plugins
@@ -704,6 +710,9 @@ class Core:
 
             for thread in self.thread_manager.threads:
                 thread.put("quit")
+
+            # kill all threads
+            self._stop_hotreload_code()
 
             for pyfile in list(self.files.cache.values()):
                 pyfile.abort_download()
