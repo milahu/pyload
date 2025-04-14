@@ -2,8 +2,12 @@
 
 set -eux
 
-# git checkout main
+# git checkout develop
 
-git fetch https://github.com/pyload/pyload develop:develop
+git fetch https://github.com/pyload/pyload develop:upstream-develop
 
-git rebase develop
+# rebase: change commit ids
+# git rebase upstream-develop
+
+# merge: preserve commit ids
+git merge upstream-develop
