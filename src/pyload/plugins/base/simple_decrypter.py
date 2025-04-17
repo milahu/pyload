@@ -32,7 +32,7 @@ class SimpleDecrypter(BaseDecrypter):
     __license__ = "GPLv3"
     __authors__ = [("Walter Purcaro", "vuolter@gmail.com")]
 
-    """
+    r"""
     Following patterns should be defined by each decrypter:
 
       LINK_PATTERN: Download link or regex to catch links in group(1)

@@ -35,7 +35,7 @@ class RapiduNet(SimpleDownloader):
 
     COOKIES = [("rapidu.net", "rapidu_lang", "en")]
 
-    URL_REPLACEMENTS = [(__pattern__ + ".*", "https://rapidu.net/\g<ID>")]
+    URL_REPLACEMENTS = [(__pattern__ + ".*", r"https://rapidu.net/\g<ID>")]
 
     RECAPTCHA_KEY = r"6LcOuQkUAAAAAF8FPp423qz-U2AXon68gJSdI_W4"
 

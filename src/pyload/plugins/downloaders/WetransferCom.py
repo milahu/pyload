@@ -29,7 +29,7 @@ class WetransferCom(SimpleDownloader):
     __authors__ = [("GammaC0de", "nitzo2001[AT]yahoo[DOT]com")]
 
     URL_REPLACEMENTS = [
-        ("https?://(?:www\.)?wetransfer.com/", "https://wetransfer.com/")
+        (r"https?://(?:www\.)?wetransfer.com/", "https://wetransfer.com/")
     ]
     DIRECT_LINK = False
 

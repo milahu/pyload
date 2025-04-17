@@ -24,7 +24,7 @@ class MexaSh(XFSDownloader):
 
     PLUGIN_DOMAIN = "mexa.sh"
 
-    URL_REPLACEMENTS = [(__pattern__ + ".*", "https://mexa.sh/\g<ID>")]
+    URL_REPLACEMENTS = [(__pattern__ + ".*", r"https://mexa.sh/\g<ID>")]
 
     NAME_PATTERN = r">You have requested the file.+?>(?P<N>.+?)</a>"
     SIZE_PATTERN = r">\sFile Size\s: (?P<S>[\d.,]+)\s*(?P<U>[\w^_]+)"
