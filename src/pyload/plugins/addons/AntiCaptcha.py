@@ -23,7 +23,7 @@ class AntiCaptcha(BaseAddon):
         ("solve_recaptcha", "bool", "Solve ReCaptcha", True),
         ("solve_hcaptcha", "bool", "Solve HCaptcha", True),
         ("refund", "bool", "Request refund if result incorrect", False),
-        ("api_url", "password", "API base URL", "https://api.anti-captcha.com/"),
+        ("api_url", "str", "API base URL", "https://api.anti-captcha.com/"),
         ("passkey", "password", "API key", ""),
         ("timeout", "int", "Timeout in seconds (min 60, max 3999)", "900"),
     ]
