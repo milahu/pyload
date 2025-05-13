@@ -76,6 +76,7 @@ var EntryManager = new Class({
             }, this)
         }catch(e){
             //alert(e)
+            console.error(e);
         }
     }
 });
@@ -152,7 +153,8 @@ var LinkEntry = new Class({
         this.elements.pgbTr.adopt(new Element('td',{'colspan':5}).adopt(this.elements.pgb));
         this.initEffects();
         }catch(e){
-            alert(e)
+            //alert(e)
+            console.error(e);
         }
     },
     initEffects: function(){

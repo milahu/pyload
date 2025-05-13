@@ -83,6 +83,7 @@ class EntryManager {
       });
     } catch (e) {
       alert(e);
+      console.error(e);
     }
   }
 }
@@ -152,6 +153,7 @@ class LinkEntry {
       this.initEffects();
     } catch (e) {
       alert(e);
+      console.error(e);
     }
   }
 
