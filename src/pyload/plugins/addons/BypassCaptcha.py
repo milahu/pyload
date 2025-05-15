@@ -31,7 +31,7 @@ class BypassCaptcha(BaseAddon):
     __config__ = [
         ("enabled", "bool", "Activated", False),
         ("passkey", "password", "Access key", ""),
-        ("check_client", "bool", "Don't use if client is connected", True),
+        ("check_client", "bool", "Don't use if client is connected", False),
     ]
 
     __description__ = """Send captchas to BypassCaptcha.com"""

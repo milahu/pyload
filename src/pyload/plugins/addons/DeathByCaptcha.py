@@ -54,7 +54,7 @@ class DeathByCaptcha(BaseAddon):
         ("enabled", "bool", "Activated", False),
         ("username", "str", "Username", ""),
         ("password", "password", "Password", ""),
-        ("check_client", "bool", "Don't use if client is connected", True),
+        ("check_client", "bool", "Don't use if client is connected", False),
     ]
 
     __description__ = """Send captchas to DeathByCaptcha.com"""

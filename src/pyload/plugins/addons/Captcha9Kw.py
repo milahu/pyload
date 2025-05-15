@@ -18,7 +18,7 @@ class Captcha9Kw(BaseAddon):
 
     __config__ = [
         ("enabled", "bool", "Activated", False),
-        ("check_client", "bool", "Don't use if client is connected", True),
+        ("check_client", "bool", "Don't use if client is connected", False),
         ("confirm", "bool", "Confirm Captcha (cost +6 credits)", False),
         ("captchaperhour", "int", "Captcha per hour", "9999"),
         ("captchapermin", "int", "Captcha per minute", "9999"),
