@@ -61,6 +61,7 @@ class EntryManager {
 
       temp.forEach(elementid => {
         const index = ids.indexOf(elementid);
+        if (!this.entries[index]) return;
         this.entries[index].remove();
         this.entries = this.entries.filter(item => item.fid !== elementid);
         this.ids.splice(this.ids.indexOf(elementid), 1);

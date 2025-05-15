@@ -52,6 +52,7 @@ var EntryManager = new Class({
             return !this.ids.contains(id)
         },data).each(function(id){
             var index = this.ids.indexOf(id);
+            if (!this.entries[index]) return;
             this.entries[index].remove();
             this.entries = this.entries.filter(function(item){return item.fid != this},id);
             this.ids = this.ids.erase(id)
