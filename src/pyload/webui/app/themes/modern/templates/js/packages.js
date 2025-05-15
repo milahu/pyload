@@ -55,6 +55,7 @@ class PackageUI {
     indicateLoad();
     $.get("{{url_for('api.rpc', func='delete_finished')}}")
       .done((data) => {
+        if (data == null) return indicateSuccess();
         if (data.length > 0) {
           window.location.reload();
         } else {
@@ -71,6 +72,7 @@ class PackageUI {
     indicateLoad();
     $.get("{{url_for('api.rpc', func='restart_failed')}}")
       .done((data) => {
+        if (data == null) return indicateSuccess();
         if (data.length > 0) {
           this.packages.forEach(pack => pack.close());
         }
