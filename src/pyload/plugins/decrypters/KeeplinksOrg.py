@@ -186,11 +186,13 @@ class KeeplinksOrg(BaseDecrypter):
                 ]
                 return
         """
+        found = False
         for m in re.finditer(self.LINK_TEXTAREA_PATTERN, self.data, re.DOTALL):
             link_textarea_html = m.group(1)
             links = re.findall(self.LINK_TEXTAREA_LINK_PATTERN, link_textarea_html)
             self.urls += links
-        else:
+            found = True
+        if not found:
             raise ValueError("not found LINK_TEXTAREA_PATTERN")
 
 
