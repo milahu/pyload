@@ -34,17 +34,17 @@ class PackageUI {
         if (newIndex === oldIndex) {
           return false;
         }
-        indicateLoad();
+        uiHandler.indicateLoad();
         $.get({
           url: "{{url_for('json.package_order')}}",
           data: { pid: ui.item.data('pid'), pos: newIndex },
           traditional: true,
           success: () => {
-            indicateFinish();
+            uiHandler.indicateFinish();
             return true;
           }
         }).fail(() => {
-          indicateFail();
+          uiHandler.indicateFail();
           return false;
         });
       }
@@ -52,7 +52,7 @@ class PackageUI {
   }
 
   deleteFinished() {
-    indicateLoad();
+    uiHandler.indicateLoad();
     $.get("{{url_for('api.rpc', func='delete_finished')}}")
       .done((data) => {
         if (data == null) return indicateSuccess();
@@ -61,25 +61,25 @@ class PackageUI {
         } else {
           this.packages.forEach(pack => pack.close());
         }
-        indicateSuccess();
+        uiHandler.indicateSuccess();
       })
       .fail(() => {
-        indicateFail();
+        uiHandler.indicateFail();
       });
   }
 
   restartFailed() {
-    indicateLoad();
+    uiHandler.indicateLoad();
     $.get("{{url_for('api.rpc', func='restart_failed')}}")
       .done((data) => {
         if (data == null) return indicateSuccess();
         if (data.length > 0) {
           this.packages.forEach(pack => pack.close());
         }
-        indicateSuccess();
+        uiHandler.indicateSuccess();
       })
       .fail(() => {
-        indicateFail();
+        uiHandler.indicateFail();
       });
   }
 }
@@ -132,7 +132,7 @@ class Package {
   }
 
   loadLinks() {
-    indicateLoad();
+    uiHandler.indicateLoad();
     $.get({
       url: "{{url_for('json.package')}}",
       data: { id: this.id },
@@ -142,7 +142,7 @@ class Package {
         this.createLinks(data);
       })
       .fail(() => {
-        indicateFail();
+        uiHandler.indicateFail();
       });
   }
 
@@ -185,7 +185,7 @@ class Package {
 
     this.registerLinkEvents();
     this.linksLoaded = true;
-    indicateFinish();
+    uiHandler.indicateFinish();
     this.toggle();
   }
 
@@ -234,17 +234,17 @@ class Package {
         if (newIndex === oldIndex) {
           return false;
         }
-        indicateLoad();
+        uiHandler.indicateLoad();
         $.get({
           url: "{{url_for('json.link_order')}}",
           data: { fid: ui.item.data('lid'), pos: newIndex },
           traditional: true,
           success: () => {
-            indicateFinish();
+            uiHandler.indicateFinish();
             return true;
           }
         }).fail(() => {
-          indicateFail();
+          uiHandler.indicateFail();
           return false;
         });
       }
@@ -252,16 +252,16 @@ class Package {
   }
 
   deleteLink(lid) {
-    yesNoDialog("{{_('Are you sure you want to delete this link?')}}", (answer) => {
+    uiHandler.yesNoDialog("{{_('Are you sure you want to delete this link?')}}", (answer) => {
       if (answer) {
-        indicateLoad();
+        uiHandler.indicateLoad();
         $.get(`{{url_for('api.rpc', func='delete_files')}}/[${lid}]`)
           .done(() => {
             $(`#file_${lid}`).remove();
-            indicateFinish();
+            uiHandler.indicateFinish();
           })
           .fail(() => {
-            indicateFail();
+            uiHandler.indicateFail();
           });
       }
     });
@@ -275,10 +275,10 @@ class Package {
         $(imgs1[0]).attr("class", "glyphicon glyphicon-time text-info");
         const spans = $(ele1).find(".child_status");
         $(spans[1]).html("{{_('queued')}}");
-        indicateSuccess();
+        uiHandler.indicateSuccess();
       })
       .fail(() => {
-        indicateFail();
+        uiHandler.indicateFail();
       });
   }
 
@@ -301,42 +301,42 @@ class Package {
   }
 
   deletePackage() {
-    yesNoDialog("{{_('Are you sure you want to delete this package?')}}", (answer) => {
+    uiHandler.yesNoDialog("{{_('Are you sure you want to delete this package?')}}", (answer) => {
       if (answer) {
-        indicateLoad();
+        uiHandler.indicateLoad();
         $.get(`{{url_for('api.rpc', func='delete_packages')}}/[${this.id}]`)
           .done(() => {
             $(this.ele).remove();
-            indicateFinish();
+            uiHandler.indicateFinish();
           })
           .fail(() => {
-            indicateFail();
+            uiHandler.indicateFail();
           });
       }
     });
   }
 
   restartPackage() {
-    indicateLoad();
+    uiHandler.indicateLoad();
     $.get(`{{url_for('api.rpc', func='restart_package')}}/${this.id}`)
       .done(() => {
         this.close();
-        indicateSuccess();
+        uiHandler.indicateSuccess();
       })
       .fail(() => {
-        indicateFail();
+        uiHandler.indicateFail();
       });
   }
 
   extractPackage() {
-    indicateLoad();
+    uiHandler.indicateLoad();
     $.get(`{{url_for('api.rpc', func='service_call')}}/'ExtractArchive.extract_package', [${this.id}]`)
       .done(() => {
         this.close();
-        indicateSuccess();
+        uiHandler.indicateSuccess();
       })
       .fail(() => {
-        indicateFail();
+        uiHandler.indicateFail();
       });
   }
 
@@ -354,7 +354,7 @@ class Package {
   }
 
   movePackage() {
-    indicateLoad();
+    uiHandler.indicateLoad();
     $.get({
       url: "{{url_for('json.move_package')}}",
       data: { id: this.id, dest: ((this.ui.type + 1) % 2) },
@@ -362,15 +362,15 @@ class Package {
     })
       .done(() => {
         $(this.ele).remove();
-        indicateFinish();
+        uiHandler.indicateFinish();
       })
       .fail(() => {
-        indicateFail();
+        uiHandler.indicateFail();
       });
   }
 
   editOrder() {
-    indicateLoad();
+    uiHandler.indicateLoad();
     $.get({
       url: "{{url_for('json.package')}}",
       data: {id: this.id},
@@ -384,14 +384,14 @@ class Package {
             data: { fid: data.links[length - i].fid, pos: i - 1 },
             traditional: true
           }).fail(() => {
-            indicateFail();
+            uiHandler.indicateFail();
           });
         }
-        indicateFinish();
+        uiHandler.indicateFinish();
         this.close();
       })
       .fail(() => {
-        indicateFail();
+        uiHandler.indicateFail();
       });
   }
 
