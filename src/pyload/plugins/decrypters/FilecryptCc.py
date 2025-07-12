@@ -359,7 +359,9 @@ class FilecryptCc(BaseDecrypter):
                     m = re.search(r'https://filecrypt\.cc/index\.php\?Action=Go&id=\w+', self.data)
                     if m is not None:
                         headers = self._filecrypt_load_url(m.group(0), just_header=True)
-                        self.urls.append(headers["location"])
+                        url = headers["location"]
+                        url = url.replace("\x10", "") # remove "Data Link Escape" chars
+                        self.urls.append(url)
                         break
 
                 else:
