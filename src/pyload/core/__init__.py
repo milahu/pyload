@@ -365,14 +365,14 @@ class Core:
                 # ignore "Run" of main branch: if __name__ == "__main__":
                 return
             # verbose
-            self.log.debug(f"hot-reload {str_exc(arg)}")
+            self.log.debug(f"jurigged: {str_exc(arg)}")
         def jurigged_watch(path):
             return jurigged.watch(path + "/**/*.py", jurigged_logger)
-        self.log.info(f"Starting hot-reload from userdir {self.userdir}")
+        self.log.info(f"jurigged: Starting hot-reload from userdir {self.userdir}")
         jurigged_watch(self.userdir)
         self.sourcedir = os.path.dirname(os.path.dirname(__file__))
         if os.access(__file__, os.W_OK):
-            self.log.info(f"Starting hot-reload from sourcedir {self.sourcedir}")
+            self.log.info(f"jurigged: Starting hot-reload from sourcedir {self.sourcedir}")
             self._jurigged_watcher = jurigged_watch(self.sourcedir)
 
     def _stop_hotreload_code(self):
