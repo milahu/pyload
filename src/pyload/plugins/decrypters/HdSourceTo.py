@@ -292,7 +292,12 @@ class HdSourceTo(BaseDecrypter):
     # <a class="hosterlnk" title="Download via FileCrypt" href="https://filecrypt.cc/Container/A913715A55.html" target="_blank">
     # <a class="hosterlnk" title="Download via FileCrypt" href="https://filecrypt.cc/Container/37398DA571.html" target="_blank">
     # download_links_regex = r'<a\s+class="hosterlnk"[^>]*href="(https?://(?!hd-source\.to/out/af\.php)[^"]+)"'
-    download_links_regex = r'<a\s+class="hosterlnk"[^>]*href="(https?://[^"]+)"'
+    # https://hd-source.to/serien/utopia-2020-s01-complete-german-dl-720p-web-h264-wvf/
+    # <strong>Download:</strong> <a href="https://filecrypt.cc/Container/713F078662.html"  target="_blank">DDownload.com </a></font>
+    # <strong>Mirror #1:</strong> <a href="https://filecrypt.cc/Container/81F6CD8A82.html"  target="_blank">Rapidgator.net </a></font>
+    # download_links_regex = r'<a\s+class="hosterlnk"[^>]*href="(https?://[^"]+)"'
+    # TODO more hosters
+    download_links_regex = r'\s+href="(https://filecrypt.cc/Container/[^"]+)"'
 
     # <strong>Passwort: </strong>hd-source.to</p>
     release_password_regex = r'<strong>Passwort:\s*</strong>\s*([^<]+)</p>'
