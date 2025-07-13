@@ -19,6 +19,8 @@ pkgs.mkShell {
       # buildInputs
       paver
 
+      packaging
+
     # propagatedBuildInputs
     pycurl
     jinja2
