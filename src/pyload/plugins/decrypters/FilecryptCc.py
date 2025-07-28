@@ -153,17 +153,16 @@ class FilecryptCc(BaseDecrypter):
             self.site_with_links = self.site_with_links + self._filecrypt_load_url(i)
 
     def handle_password_protection(self):
-        # <input type="password" name="password" id="p4assw0rt"  autofocus autocomplete="off" placeholder="Enter password">
+        # <input type="text" name="password" id="p4assw0rt"  autofocus autocomplete="off" placeholder="Passwort eingeben">
         if (
             re.search(
-                #r'div class="input">\s*<input type="text" name="password" id="p4assw0rt"',
-                r'placeholder="Enter password"',
+                r'name="password" id="p4assw0rt"',
                 self.data,
             )
             is None
             or
             re.search(
-                r'<!--\s*<input[^>]+type="password"',
+                r'<!--\s*<input[^>]+name="password" id="p4assw0rt"',
                 self.data,
             )
         ):
@@ -179,8 +178,9 @@ class FilecryptCc(BaseDecrypter):
                 self._("Please enter the password in package section and try again")
             )
 
+        # <input type="text" name="password" id="p4assw0rt"  autofocus autocomplete="off" placeholder="Passwort eingeben">
         self.data = self._filecrypt_load_url(
-            self.pyfile.url, post={"pssw": password}
+            self.pyfile.url, post={"password": password}
         )
 
     def search_captcha(self, html):
