@@ -709,6 +709,7 @@ class Api:
     def delete_files(self, *args, file_ids=None):
         file_ids = args or file_ids
         if not file_ids: return
+        file_ids = set(file_ids) # deduplicate
         """
         Deletes several file entries from pyload.
 
