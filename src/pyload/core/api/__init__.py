@@ -13,6 +13,7 @@ import os
 import re
 import time
 from enum import IntFlag
+import stat
 
 from pyload import PKGDIR
 
@@ -658,6 +659,52 @@ class Api:
         )
 
         return pdata
+
+    @permission(Perms.LIST)
+    def get_package_folder_files(self, package_id, subdir="", detail=True):
+        """
+        Returns list of files in the package folder
+
+        :param package_id: package id
+        :param subdir: path to subdirectory
+        :return: todo
+        """
+        data = self.pyload.files.get_package_data(int(package_id))
+
+        if not data:
+            raise PackageDoesNotExists(package_id)
+
+        dl_folder = self.pyload.config.get("general", "storage_folder")
+        dl_folder = os.path.normpath(dl_folder)
+        folder_path = os.path.join(dl_folder, data["folder"])
+        if subdir:
+            subdir_path = os.path.join(folder_path, subdir)
+            subdir_path = os.path.normpath(subdir_path)
+            if os.path.relpath(subdir_path, folder_path).startswith(".."):
+                # attacker is trying to escape from our jailroot
+                raise ValueError(f"subdir_path is above dl_folder")
+                # raise FileNotFoundError(f"subdir_path is above dl_folder")
+        else:
+            subdir_path = folder_path
+        # this can throw FileNotFoundError if subdir_path not exists
+        file_name_list = os.listdir(subdir_path)
+        if not detail: return file_name_list
+        file_details_list = []
+        for name in file_name_list:
+            p = os.path.join(subdir_path, name)
+            s = os.stat(p) # default: follow_symlinks=True
+            if stat.S_ISDIR(s.st_mode):
+                t = "directory"
+            else:
+                t = "file"
+            # similar to fsspec fs.listdir
+            file_details_list.append({
+                "name": name,
+                "type": t,
+                "size": s.st_size,
+                "mtime": s.st_mtime,
+            })
+        return file_details_list
 
     @legacy("getPackageInfo")
     @permission(Perms.LIST)
