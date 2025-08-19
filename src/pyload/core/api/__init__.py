@@ -833,6 +833,17 @@ class Api:
             for pack in self.pyload.files.get_complete_data(Destination.QUEUE).values()
         ]
 
+    def get_queue_and_collector(self):
+        """
+        get queue and collector in one call.
+
+        :return: list of `PackageInfo`
+        """
+        return (
+            [{**p, "queue": True} for p in self.get_queue()] +
+            [{**p, "queue": False} for p in self.get_collector()]
+        )
+
     @legacy("getCollector")
     @permission(Perms.LIST)
     def get_collector(self):
