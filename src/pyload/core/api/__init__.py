@@ -767,6 +767,22 @@ class Api:
 
         self.pyload.files.save()
 
+    @permission(Perms.DELETE)
+    def delete_unfinished_links(self, package_ids=[]):
+        """
+        useful to deduplicate links in single-part packages
+        TODO handle multi-part packages
+        """
+        link_ids = []
+        for package_id in package_ids:
+            package_data = self.pyload.files.get_package_data(int(package_id))
+            for link in package_data["links"].values():
+                if link["status"] == 0: continue # keep finished links
+                link_ids.append(link["id"])
+        for link_id in link_ids:
+            self.pyload.files.delete_link(link_id)
+        return len(link_ids) # how many links were deleted
+
     @legacy("deletePackages")
     @permission(Perms.DELETE)
     def delete_packages(self, package_ids):
