@@ -40,7 +40,7 @@ __version_info__ = semver.parse_version_info(__version__)
 
 # Locale
 
-locale.setlocale(locale.LC_ALL, "C")
+locale.setlocale(locale.LC_ALL, "en_US.UTF-8")
 if os.name == "nt":
     _locale._getdefaultlocale = lambda *args: ["en_US", "utf_8_sig"]
 
