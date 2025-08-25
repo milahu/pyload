@@ -780,7 +780,11 @@ class Api:
                 if link["status"] == 0: continue # keep finished links
                 link_ids.append(link["id"])
         for link_id in link_ids:
-            self.pyload.files.delete_link(link_id)
+            try:
+                # TODO verify: this can raise Abort
+                self.pyload.files.delete_link(link_id)
+            except Exception as exc:
+                print(f"core/api/__init__.py delete_unfinished_links exc {exc}")
         return len(link_ids) # how many links were deleted
 
     @legacy("deletePackages")
