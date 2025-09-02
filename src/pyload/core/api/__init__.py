@@ -946,13 +946,18 @@ class Api:
 
     @legacy("pullFromQueue")
     @permission(Perms.MODIFY)
-    def pull_from_queue(self, package_id):
+    def pull_from_queue(self, *args, package_id=None, package_ids=[]):
         """
         Moves package from Queue to Collector.
 
         :param package_id: package id
         """
-        self.pyload.files.set_package_location(package_id, Destination.COLLECTOR)
+        if args:
+            package_ids += list(args)
+        if package_id != None:
+            package_ids.append(package_id)
+        for package_id in package_ids:
+            self.pyload.files.set_package_location(package_id, Destination.COLLECTOR)
 
     @legacy("restartPackage")
     @permission(Perms.MODIFY)
