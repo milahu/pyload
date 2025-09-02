@@ -1136,11 +1136,14 @@ class Api:
 
     @legacy("restartFailed")
     @permission(Perms.MODIFY)
-    def restart_failed(self):
+    def restart_failed(self, *args, link_ids=[]):
         """
-        Restarts all failed failes.
+        Restarts all failed links.
         """
-        self.pyload.files.restart_failed()
+        if args:
+            link_ids += list(args)
+        # TODO move this to self.pyload.links.restart_failed
+        self.pyload.files.restart_failed(link_ids=link_ids)
 
     @legacy("getPackageOrder")
     @permission(Perms.LIST)

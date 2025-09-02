@@ -9,12 +9,12 @@ from .event_manager import InsertEvent, ReloadAllEvent, RemoveEvent, UpdateEvent
 
 
 def change(func):
-    def new(self, *args):
+    def new(self, *args, **kwargs):
         self.unchanged = False
         self.filecount = -1
         self.queuecount = -1
         self.job_cache = {}
-        return func(self, *args)
+        return func(self, *args, **kwargs)
 
     return new
 
@@ -645,8 +645,8 @@ class FileManager:
 
     @lock
     @change
-    def restart_failed(self):
+    def restart_failed(self, link_ids=[]):
         """
         restart all failed links.
         """
-        self.pyload.db.restart_failed()
+        self.pyload.db.restart_failed(link_ids=link_ids)

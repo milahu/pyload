@@ -416,8 +416,12 @@ class FileDatabaseMethods:
         )
 
     @style.queue
-    def restart_failed(self):
-        self.c.execute("UPDATE links SET status=3,error='' WHERE status IN (6, 8, 9)")
+    def restart_failed(self, link_ids=[]):
+        query = "UPDATE links SET status=3,error='' WHERE status IN (6, 8, 9)"
+        if link_ids:
+            query += " AND id IN (" + ",".join(["?"] * len(link_ids)) + ")"
+        args = link_ids
+        self.c.execute(query, args)
 
     @style.queue
     def find_duplicates(self, id, folder, filename):
