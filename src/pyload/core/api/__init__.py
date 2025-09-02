@@ -1290,13 +1290,15 @@ class Api:
 
     @legacy("getAccounts")
     @permission(Perms.ACCOUNTS)
-    def get_accounts(self, refresh):
+    def get_accounts(self, *args, refresh=False):
         """
         Get information about all entered accounts.
 
         :param refresh: reload account info
         :return: list of `AccountInfo`
         """
+        if args:
+            refresh = args[0]
         accs = self.pyload.account_manager.get_account_infos(False, refresh)
         accounts = []
         for group in accs.values():
