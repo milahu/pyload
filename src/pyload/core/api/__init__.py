@@ -238,6 +238,18 @@ class Api:
         """
         return self._convert_config_format(self.pyload.config.plugin)
 
+    @permission(Perms.SETTINGS)
+    def get_core_and_plugins_config(self):
+        """
+        Get complete config of core and plugins.
+
+        :return: dict of list of `ConfigSection`
+        """
+        return {
+            "core": self.get_config(),
+            "plugins": self.get_plugin_config(),
+        }
+
     @legacy("getPluginConfigDict")
     def get_plugin_config_dict(self):
         """
