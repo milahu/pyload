@@ -34,7 +34,11 @@ class RapidgatorNet(BaseAccount):
         try:
             json_data = self.api_request("info", sid=data["sid"])
 
-            if json_data["response_status"] == 200:
+            # self.log_info(f"RapidgatorNet json_data {json.dumps(json_data, indent=2)}")
+            # json_data["response"] can be empty list
+            # -> TypeError: list indices must be integers or slices, not str
+            # if json_data["response_status"] == 200:
+            if json_data["response_status"] == 200 and json_data["response"]:
                 validuntil = json_data["response"]["expire_date"]
                 trafficleft = float(json_data["response"]["traffic_left"])
                 premium = True
