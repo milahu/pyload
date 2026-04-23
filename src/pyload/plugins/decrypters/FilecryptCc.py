@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 #
 # Test links:
@@ -28,7 +27,7 @@ from ..helpers import replace_patterns
 class FilecryptCc(BaseDecrypter):
     __name__ = "FilecryptCc"
     __type__ = "decrypter"
-    __version__ = "0.50"
+    __version__ = "0.52"
     __status__ = "testing"
 
     __pattern__ = r"https?://(?:www\.)?filecrypt\.(?:cc|co)/Container/\w+"
@@ -52,9 +51,9 @@ class FilecryptCc(BaseDecrypter):
     DLC_LINK_PATTERN = r'onclick="DownloadDLC\(\'(.+)\'\);">'
     WEBLINK_PATTERN = r"<button onclick=\"[\w\-]+?/\*\d+?\*/\('([\w/-]+?)',"
     MIRROR_PAGE_PATTERN = r'"[\w]*" href="(https?://(?:www\.)?filecrypt.cc/Container/\w+\.html\?mirror=\d+)">'
+    OFFLINE_PATTERN = r">Not Found<"
 
-    #CAPTCHA_PATTERN = r"<h2>Security prompt</h2>"
-
+    CAPTCHA_PATTERN = r"<h2>Security Check</h2>"
     INTERNAL_CAPTCHA_PATTERN = r'<img id="nc" .* src="(.+?)"'
     CIRCLE_CAPTCHA_PATTERN = r'<input type="image" src="(.+?)"'
     KEY_CAPTCHA_PATTERN = r"<script language=JavaScript src='(http://backs\.keycaptcha\.com/swfs/cap\.js)'"
@@ -91,13 +90,7 @@ class FilecryptCc(BaseDecrypter):
         self.data = self._filecrypt_load_url(pyfile.url)
         #self.log_info("self.data[:1000]", self.data[:1000])
 
-        # @NOTE: "content notfound" is NOT a typo
-        if (
-            "content notfound" in self.data
-            or ">File <strong>not</strong> found<" in self.data
-            or
-            "<strong>Not Found</strong></h2>" in self.data
-        ):
+        if re.search(self.OFFLINE_PATTERN, self.data):
             self.offline()
 
         self.log_info("handle_password_protection")

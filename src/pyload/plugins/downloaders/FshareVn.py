@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import json
 import re
 import urllib.parse
@@ -54,9 +53,7 @@ class FshareVn(SimpleDownloader):
             )
 
         else:
-            self.req.http.c.setopt(
-                pycurl.HTTPHEADER, ["Content-Type: application/json"]
-            )
+            self.req.http.set_header("Content-Type", "application/json")
             json_data = self.load(
                 self.API_URL + method,
                 post=json.dumps(kwargs),
@@ -71,9 +68,7 @@ class FshareVn(SimpleDownloader):
         info = {}
         file_id = re.match(self.__pattern__, url).group("ID")
 
-        self.req.http.c.setopt(
-            pycurl.HTTPHEADER, ["Accept: application/json, text/plain, */*"]
-        )
+        self.req.http.set_header("Accept", "application/json, text/plain, */*")
         file_info = json.loads(
             self.load(
                 "https://www.fshare.vn/api/v3/files/folder", get={"linkcode": file_id}

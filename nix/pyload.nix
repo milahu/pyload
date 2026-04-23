@@ -23,7 +23,7 @@
 , gocr
 , unrar
 , rhino
-, spidermonkey
+# , spidermonkey
 , buildPythonApplication
 }:
 
@@ -61,7 +61,7 @@ buildPythonApplication rec {
     # TODO are these actually available on runtime?
     unrar # unfree
     rhino
-    spidermonkey
+    # spidermonkey
     gocr
   ] ++ (with python3.pkgs; [
     pycurl

@@ -1,4 +1,16 @@
 {% autoescape true %}
+// Set up CSRF token for all AJAX requests
+const getCsrfToken = () => document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+// Add CSRF token to all jQuery AJAX requests
+$.ajaxSetup({
+  beforeSend: function (xhr, settings) {
+    if (!/^(GET|HEAD|OPTIONS|TRACE)$/i.test(settings.type) && !this.crossDomain) {
+      xhr.setRequestHeader("X-CSRFToken", getCsrfToken());
+    }
+  }
+});
+
 class NotificationHandler {
   constructor() {
     this.enabled = false;
@@ -104,16 +116,15 @@ class CaptchaHandler {
   setCaptcha = (captchaData) => {
     this.captchaResetDefault();
 
-    const params = JSON.parse(captchaData.params);
     $("#cap_id").val(captchaData.id);
     if (captchaData.result_type === "textual") {
-      $("#cap_textual_img").attr("src", params.src);
+      $("#cap_textual_img").attr("src", captchaData.params.src);
       $("#cap_submit").css("display", "inline");
       $("#cap_box #cap_title").text("");
       $("#cap_textual").css("display", "block");
       $("#cap_result").focus();
     } else if (captchaData.result_type === "positional") {
-      $("#cap_positional_img").attr("src", params.src);
+      $("#cap_positional_img").attr("src", captchaData.params.src);
       $("#cap_box #cap_title").text("{{_('Please click on the right captcha position.')}}");
       $("#cap_positional").css("display", "block");
     } else if (captchaData.result_type === "interactive" || captchaData.result_type === "invisible") {
@@ -121,7 +132,7 @@ class CaptchaHandler {
       const infoId = captchaData.result_type === "interactive" ? "cap_interactive_loading" : "cap_invisible_loading"
       const interactionData = {
         infoId: infoId,
-        params: params
+        params: captchaData.params
       }
       this.startInteraction(interactionData);
     }
@@ -131,7 +142,6 @@ class CaptchaHandler {
   loadCaptcha = (method, data) => {
     $.ajax({
       url: "{{url_for('json.set_captcha')}}",
-      async: true,
       method: method,
       data: data,
       success: (response) => (response.captcha ? this.setCaptcha(response) : this.clearCaptcha())
@@ -200,7 +210,7 @@ class UIHandler {
     $goto_top.toggleClass('hidden', !this.topbuttonVisible).affix({ offset: { top: 100 } });
     const navCss = this.stickynavlCss($(window).scrollTop(), navHeight);
     const modalTop = navHeight + parseFloat((navCss.top || `${-navHeight}`.replace('px', ''))) + 5;
-    $(".modal .modal-dialog").css({top: `${modalTop}px`});
+    $(".modal .modal-dialog").css({ top: `${modalTop}px` });
     $stickyNav.css(navCss);
 
     const addlinksMinHeight = getScrollBarHeight() + Math.round(parseFloat($("#add_links").css("line-height").replace('px', '')));
@@ -221,6 +231,92 @@ class UIHandler {
     $goto_top.click(() => this.scrollToTop());
     this.initPasswordReveal();
     this.initButtonHandlers();
+    this.initContainerDragAndDrop();
+  }
+
+  initContainerDragAndDrop() {
+    const allowedExts = ["ccf", "dlc", "rsdf", "torrent", "txt"];
+    const $overlay = $(
+      '<div id="container_drop_overlay">' +
+      '<div class="container_drop_overlay_message" style="color: #fff">' +
+      "{{_('Drop container file to add to queue')}}" +
+      "</div>" +
+      "</div>"
+    ).css({
+      display: "block",
+      position: "fixed",
+      top: 0, left: 0, right: 0, bottom: 0,
+      opacity: 0,
+      transition: "opacity 0.25s ease-in-out",
+      background: "rgba(23, 84, 31, 0.8)",
+      "z-index": 100012,
+      pointerEvents: "none",
+      textAlign: "center",
+      color: "#fff",
+      textShadow: "0 2px 4px rgba(0,0,0,0.6)",
+      fontSize: "2em",
+      lineHeight: "100vh"
+    }).appendTo("body");
+
+    let dragDepth = 0;
+    const hasFiles = (dt) => dt && Array.from(dt.types || []).indexOf("Files") !== -1;
+
+    $(window).on("dragenter.containerdrop", (event) => {
+      if (!hasFiles(event.originalEvent.dataTransfer)) return;
+      if (dragDepth++ === 0) $overlay.css("opacity", 1);
+    });
+    $(window).on("dragleave.containerdrop", () => {
+      if (--dragDepth <= 0) {
+        dragDepth = 0;
+        $overlay.css("opacity", 0);
+      }
+    });
+    $(window).on("dragover.containerdrop", (event) => {
+      if (hasFiles(event.originalEvent.dataTransfer)) {
+        event.preventDefault();
+      }
+    });
+    $(window).on("drop.containerdrop", (event) => {
+      const dt = event.originalEvent.dataTransfer;
+      if (!hasFiles(dt)) return;
+      event.preventDefault();
+      dragDepth = 0;
+      $overlay.css("opacity", 0);
+      const files = Array.from(dt.files || []);
+      if (files.length === 0) return;
+      files.forEach((file) => this.uploadDroppedContainer(file, allowedExts));
+    });
+  }
+
+  uploadDroppedContainer(file, allowedExts) {
+    const ext = file.name.split(".").pop().toLowerCase();
+    if (allowedExts.indexOf(ext) === -1) {
+      this.indicateFail("{{_('Unsupported container type')}}" + ": " + ext);
+      return;
+    }
+    const formData = new FormData();
+    formData.append("add_file", file);
+    formData.append("add_name", "");
+    formData.append("add_dest", "1");
+    formData.append("add_links", "");
+
+    this.indicateLoad();
+    $.post({
+      url: "{{url_for('json.add_package')}}",
+      data: formData,
+      processData: false,
+      contentType: false,
+      success: () => {
+        this.indicateSuccess("{{_('Container added to queue')}}");
+        const re = /\/queue\/?$/i;
+        if (window.location.toString().match(re)) {
+          window.location.assign(window.location.href.replace(/#.*$/, ""));
+        }
+      },
+      error: () => {
+        this.indicateFail("{{_('Upload failed')}}");
+      }
+    });
   }
 
   handleScroll($goto_top, $stickyNav, navHeight) {
@@ -233,7 +329,7 @@ class UIHandler {
     }
     const navCss = this.stickynavlCss(scrollTop, navHeight);
     const modalTop = navHeight + parseFloat((navCss.top || `${-navHeight}`).replace('px', '')) + 5;
-    $(".modal .modal-dialog").css({top: `${modalTop}px`});
+    $(".modal .modal-dialog").css({ top: `${modalTop}px` });
     $stickyNav.css(navCss);
   }
 
@@ -248,15 +344,15 @@ class UIHandler {
   }
 
   initPasswordReveal() {
-    $('input[type=password].reveal-pass').map(function() {
+    $('input[type=password].reveal-pass').map(function () {
       const reveal_id = Date.now();
 
       $(this).wrap("<div class=\"form-group has-feedback\"></div>");
-      const button = $("<button class='close form-control-feedback hidden' type='button' style='pointer-events: auto;'><span class='glyphicon glyphicon-eye-close' style='font-size: 11px;'></span></button>");
+      const button = $("<button class='close form-control-feedback hidden' type='button' tabindex='-1' style='pointer-events: auto;'><span class='glyphicon glyphicon-eye-close' style='font-size: 11px;'></span></button>");
       button.attr("data-reveal-pass-id", reveal_id);
       $(this).after(button);
       $(this).attr("data-reveal-pass-id", reveal_id);
-      $(this).on('input', function() {
+      $(this).on('input', function () {
         const visible = Boolean($(this).val());
         $(this).siblings(`button[data-reveal-pass-id="${$(this).attr("data-reveal-pass-id")}"]`).toggleClass('hidden', !visible);
       });
@@ -275,22 +371,21 @@ class UIHandler {
   }
 
   initButtonHandlers() {
-    $('.btn, input[type="radio"]').focus(function() { this.blur(); });
+    $('.btn, input[type="radio"]').focus(function () { this.blur(); });
 
-    $("#add_form").submit(function(event) {
+    $("#add_form").submit(function (event) {
       event.preventDefault();
       const formData = new FormData(this);
       const $this = $(this);
       /*
       if ($this.find("#add_name").val() === "" && $this.find("#add_file").val() === "") {
-        alert("{{_('Please Enter a package name.')}}");
+        $this[0].reportValidity();
         return false;
       } else {
       */
       if (true) {
-        $.ajax({
+        $.post({
           url: "{{url_for('json.add_package')}}",
-          method: "POST",
           data: formData,
           processData: false,
           contentType: false,
@@ -298,7 +393,7 @@ class UIHandler {
             const queue = $this.find("#add_dest").val() === "1" ? "queue" : "collector";
             const re = new RegExp(`/${queue}/?$`, "i");
             if (window.location.toString().match(re)) {
-              window.location.reload();
+              window.location.assign(window.location.href.replace(/#.*$/, ''));
             }
           },
           error: () => {
@@ -315,11 +410,12 @@ class UIHandler {
     });
 
     $("#action_play").click(() => {
-      $.get("{{url_for('api.rpc', func='unpause_server')}}", () => {
-        $.ajax({
-          method: "post",
+      $.post("{{url_for('api.rpc', func='unpause_server')}}", () => {
+        $.post({
           url: "{{url_for('json.status')}}",
-          async: true,
+          dataType: 'json',
+          contentType: 'application/json',
+          data: '{}',
           timeout: 3000,
           success: loadJsonToContent
         });
@@ -329,17 +425,18 @@ class UIHandler {
     $("#action_cancel").click(() => {
       this.yesNoDialog("{{_('Are you sure you want to abort all downloads?')}}", (answer) => {
         if (answer) {
-          $.get("{{url_for('api.rpc', func='stop_all_downloads')}}");
+          $.post("{{url_for('api.rpc', func='stop_all_downloads')}}");
         }
       });
     });
 
     $("#action_stop").click(() => {
-      $.get("{{url_for('api.rpc', func='pause_server')}}", () => {
-        $.ajax({
-          method: "post",
+      $.post("{{url_for('api.rpc', func='pause_server')}}", () => {
+        $.post({
           url: "{{url_for('json.status')}}",
-          async: true,
+          dataType: 'json',
+          contentType: 'application/json',
+          data: '{}',
           timeout: 3000,
           success: loadJsonToContent
         });
@@ -347,11 +444,12 @@ class UIHandler {
     });
 
     $("#toggle_queue").click(() => {
-      $.get("{{url_for('api.rpc', func='toggle_pause')}}", () => {
-        $.ajax({
-          method: "post",
+      $.post("{{url_for('api.rpc', func='toggle_pause')}}", () => {
+        $.post({
           url: "{{url_for('json.status')}}",
-          async: true,
+          dataType: 'json',
+          data: '{}',
+          contentType: 'application/json',
           timeout: 3000,
           success: loadJsonToContent
         });
@@ -359,11 +457,12 @@ class UIHandler {
     });
 
     $("#toggle_proxy").click(() => {
-      $.get("{{url_for('api.rpc', func='toggle_proxy')}}", () => {
-        $.ajax({
-          method: "post",
+      $.post("{{url_for('api.rpc', func='toggle_proxy')}}", () => {
+        $.post({
           url: "{{url_for('json.status')}}",
-          async: true,
+          dataType: 'json',
+          contentType: 'application/json',
+          data: '{}',
           timeout: 3000,
           success: loadJsonToContent
         });
@@ -371,11 +470,12 @@ class UIHandler {
     });
 
     $("#toggle_reconnect").click(() => {
-      $.get("{{url_for('api.rpc', func='toggle_reconnect')}}", () => {
-        $.ajax({
-          method: "post",
+      $.post("{{url_for('api.rpc', func='toggle_reconnect')}}", () => {
+        $.post({
           url: "{{url_for('json.status')}}",
-          async: true,
+          dataType: 'json',
+          contentType: 'application/json',
+          data: '{}',
           timeout: 3000,
           success: loadJsonToContent
         });
@@ -422,23 +522,87 @@ class UIHandler {
   }
 
   yesNoDialog(question, callback) {
-    $('#modal_question').text(question);
+    const callStack = (new Error().stack).split('\n');
+    const callerId = callStack[1].split('/').at(-1)
+    const yesNoSettings = JSON.parse(sessionStorage.getItem('yesNoSettings') || "{}");
+    const storedAnswer = yesNoSettings[callerId];
+    if (storedAnswer === undefined) {
+      const visibleModals = $('.modal.in');
+      if (visibleModals.length > 0) {
+        const activeModal = visibleModals.first();
+        const modalTitle = activeModal.find('.modal-title');
+        const modalBody = activeModal.find('.modal-body');
 
-    $('#okButton').off('click').on('click', () => {
-      $('#yesno_box').modal('hide');
-      callback(true);
-    });
+        const originalTitle = modalTitle.text().trim();
+        const originalBody = modalBody.html().trim();
 
-    $('#cancelButton').off('click').on('click', () => {
-      $('#yesno_box').modal('hide');
-      callback(false);
-    });
+        modalTitle.text('{{_("Confirmation")}}');
+        modalBody.html(
+          '<p>' + question + '</p>' +
+          `<div style="margin-bottom: 25px;"><input type="checkbox" id="dontAskAgain2"><label for="dontAskAgain2" style="font-weight: normal; margin-left: 4px; user-select: none;">{{_("Don't ask again")}}</label></div>` +
+          '<button type="button" class="btn btn-success" style="float: right;" id="okButton">{{_("Ok")}}</button>' +
+          '<button type="button" class="btn warning" style="margin-right: 5px; float: right" id="cancelButton">{{_("Cancel")}}</button>'
+        );
 
-    $('#yesno_box').modal('show');
+        modalBody.one('click', '#okButton, #cancelButton', (event) => {
+          const answer = $(event.target).attr("id") === "okButton";
+          const dontAskAgain = $('#dontAskAgain2').is(':checked');
+          modalTitle.text(originalTitle);
+          modalBody.html(originalBody);
+          if (dontAskAgain) {
+            yesNoSettings[callerId] = answer;
+            sessionStorage.setItem("yesNoSettings", JSON.stringify(yesNoSettings));
+          }
+          callback(answer);
+        });
+      } else {
+        $('#modal_question').text(question);
+        $('#dontAskAgain').prop('checked', false);
+
+        $('#modal_body').one('click', '#okButton, #cancelButton', (event) => {
+          const answer = $(event.target).attr("id") === "okButton";
+          const dontAskAgain = $('#dontAskAgain').is(':checked');
+          $('#yesno_box').modal('hide');
+          if (dontAskAgain) {
+            yesNoSettings[callerId] = answer;
+            sessionStorage.setItem("yesNoSettings", JSON.stringify(yesNoSettings));
+          }
+          callback(answer);
+        });
+
+        $('#yesno_box').modal('show');
+      }
+    } else {
+      callback(storedAnswer);
+    }
   }
 }
 
 var uiHandler = new UIHandler();
+
+const formToObject = (form) => {
+  const obj = {};
+
+  $(form).find("input, select, textarea").each(function () {
+    let value;
+    const $el = $(this);
+    const name = $el.attr("name");
+    if (!name || $el.prop("disabled")) return;
+
+    if ($el.is('input[type="checkbox"]')) {
+      value = $el.prop("checked") ? true : false;
+    }
+    else {
+      value = $el.val();
+    }
+
+    if (!value && value !== "") return;
+
+    obj[name] = value
+  });
+
+  return obj;
+};
 
 const humanFileSize = (f) => {
   const d = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
@@ -462,12 +626,12 @@ const parseUri = () => {
   return $add_links.val(e);
 };
 
-Array.prototype.remove = function(from, to) {
-    let left;
-    const rest = this.slice(((to || from) + 1) || this.length);
-    this.length = (left = from < 0) != null ? left : this.length + {from};
-    if (this.length === 0) { return []; }
-    return this.push.apply(this, rest);
+Array.prototype.remove = function (from, to) {
+  let left;
+  const rest = this.slice(((to || from) + 1) || this.length);
+  this.length = (left = from < 0) != null ? left : this.length + { from };
+  if (this.length === 0) { return []; }
+  return this.push.apply(this, rest);
 };
 
 const getScrollBarHeight = () => {
@@ -499,21 +663,29 @@ $(() => {
   uiHandler.initUI()
 
   if (thisScript.getAttribute('nopoll') !== "1") {
-    $.ajax({
-      method: "post",
+    $.post({
       url: "{{url_for('json.status')}}",
-      async: true,
+      dataType: 'json',
+      contentType: 'application/json',
+      data: '{}',
       timeout: 3000,
       success: loadJsonToContent
     });
 
-    setInterval(() => {
-      $.ajax({
-        method: "post",
+    const statusInterval = setInterval(() => {
+      $.post({
         url: "{{url_for('json.status')}}",
-        async: true,
+        dataType: 'json',
+        contentType: 'application/json',
+        data: '{}',
         timeout: 3000,
-        success: loadJsonToContent
+        success: loadJsonToContent,
+        error: (xhr) => {
+          if (xhr.status === 400) {
+            clearInterval(statusInterval);
+            uiHandler.indicateInfo("{{_('Status updates stopped due to authentication error,<br>please refresh the page')}}", 0);
+          }
+        }
       });
     }, 4000);
   }

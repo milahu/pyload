@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import re
 import time
 
@@ -41,7 +40,7 @@ class NitrobitNet(SimpleDownloader):
     def handle_premium(self, pyfile):
         current_millis = int(time.time() * 1000)
 
-        self.req.http.c.setopt(pycurl.HTTPHEADER, ["X-Requested-With: XMLHttpRequest"])
+        self.req.http.set_header("X-Requested-With", "XMLHttpRequest")
         self.data = self.load(
             "http://www.nitrobit.net/ajax/unlock.php",
             get={

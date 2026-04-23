@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import re
 
 from ..base.xfs_downloader import XFSDownloader
@@ -37,7 +35,7 @@ class UseruploadNet(XFSDownloader):
         self.data = self.load(
             pyfile.url,
             post=self._post_parameters(),
-            ref=self.pyfile.url,
+            referrer=self.pyfile.url,
             redirect=False,
         )
 

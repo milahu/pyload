@@ -1,13 +1,17 @@
-# -*- coding: utf-8 -*-
-
 import json
+import os
+import time
 from functools import wraps
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse, urlsplit
 
 import flask
 import flask_themes2
 import werkzeug.routing
+
 from pyload.core.api import Perms, Role, has_permission
+from pyload.core.utils.web.check import is_loopback_address
+
+from .extensions import csrf
 
 
 class JSONEncoder(json.JSONEncoder):
@@ -32,16 +36,58 @@ else:
             return json.loads(s, **kwargs)
 
 
-#: Checks if location belongs to same host address
 def is_safe_url(location):
-    location_urlp = urlparse(location)
-    #: if relative URL then must start with "/"
-    if not location_urlp.netloc and location[0] != "/":
+    """
+    Checks if a redirect target is safe (same origin or safe relative path).
+    Prevents open redirects.
+    """
+    if not location or not isinstance(location, str):
         return False
-    host_urlp = urlparse(flask.request.host_url)
-    test_urlp = urlparse(urljoin(flask.request.host_url, location))
-    return test_urlp.scheme in ('http', 'https') and host_urlp.netloc == test_urlp.netloc
 
+    # Strip dangerous leading whitespace/control characters (tabs, newlines, etc.)
+    # This mitigates CVE-2023-24329 and similar parser bypasses
+    location = location.lstrip(" \t\n\r\x0b\x0c")
+
+    # Handle empty or obviously bad input like protocol-relative
+    if not location or location.startswith('//'):
+        return False
+
+    # Use urljoin against the current host_url to resolve relatives
+    # This ensures relative paths stay on-origin
+    base_url = flask.request.host_url.rstrip('/') + '/'  # Ensure trailing slash for correct joining
+    test_url = urljoin(base_url, location)
+
+    # Parse both the base and the resolved test URL
+    base_parsed = urlparse(base_url)
+    test_parsed = urlparse(test_url)
+
+    # Additional safety: re-parse with urlsplit for scheme edge cases
+    test_split = urlsplit(test_url)
+
+    # Strict checks:
+    # 1. Scheme must be http or https (or empty for relative) and match the original scheme
+    # 2. Netloc (host + port) must match the application's host
+    if test_parsed.scheme not in ('', 'http', 'https'):
+        return False
+
+    # If there's a protocol (scheme) but no host (netloc), it's likely malformed
+    if test_split.scheme and not test_split.netloc:
+        return False
+
+    # Reject if netloc differs (this catches absolute external URLs)
+    if test_parsed.netloc and test_parsed.netloc != base_parsed.netloc:
+        return False
+
+    if test_split.scheme:
+        # Extra hardening: ensure the final path doesn't contain dangerous schemes in edge cases
+        if test_split.scheme not in ('http', 'https'):
+            return False
+
+        # Reject if scheme differs (this catches explicit cross protocol)
+        if test_split.scheme != base_parsed.scheme:
+            return False
+
+    return True
 
 def get_redirect_url(fallback=None):
     next_arg = flask.request.values.get("next")
@@ -65,6 +111,36 @@ def clear_session(session=flask.session, permanent=True):
     # session.modified = True
 
 
+def clear_all_user_sessions(username):
+    session_dir = flask.current_app.config['SESSION_FILE_DIR']
+    sessions_cleared = 0
+
+    def _read_session_file(filepath):
+        session_data = {}
+
+        if os.path.exists(filepath):
+            with open(filepath, 'rb') as f:
+                timeout_bytes = f.read(4)  # Read the 4-byte timeout header
+                if len(timeout_bytes) == 4:
+                    # timeout = struct.unpack("I", timeout_bytes)[0]   # little-endian unsigned int
+                    session_data = flask.current_app.session_interface.serializer.decode(f.read())
+
+        return session_data
+
+    if os.path.exists(session_dir):
+        for filename in os.listdir(session_dir):
+            filepath = os.path.join(session_dir, filename)
+            try:
+                session_info = _read_session_file(filepath)
+                if isinstance(session_info, dict) and session_info.get("name") == username:
+                    os.remove(filepath)
+                    sessions_cleared += 1
+            except Exception:
+                continue
+
+    return sessions_cleared
+
+
 def current_theme_id():
     api = flask.current_app.config["PYLOAD_API"]
     return api.get_config_value("webui", "theme").lower()
@@ -81,7 +157,7 @@ def static_file_url(filename):
 
 
 def theme_template(filename):
-    return flask.url_for("app.render", filename=filename)
+    return flask.url_for("app.web", filename=filename)
 
 
 #: tries to render the template of the current theme otherwise fallback to builtin template
@@ -189,6 +265,40 @@ def is_authenticated(session=flask.session):
     return authenticated and api.user_exists(user)
 
 
+def config_check(config_key: list[str], not_found_msg: str = "Not Found"):
+    """
+    Decorator factory: Checks [config_key] config value and aborts with 404 if False.
+
+    :param config_key: The config key to check (e.g., ["ClickNLoad", "enabled", "plugin"]).
+    :param not_found_msg: Custom message for the 404 response.
+    :return: A decorator to wrap view functions.
+    """
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            api = flask.current_app.config["PYLOAD_API"]
+            if not api.get_config_value(*config_key):
+                return not_found_msg, 404
+            return f(*args, **kwargs)
+        return decorated_function
+    return decorator
+
+
+def is_loopback_request(request=flask.request, check_source=True):
+    if check_source:
+        if any(
+            request.headers.get(header)
+            for header in ("X-Forwarded-For", "X-Real-IP", "Forwarded")
+        ):
+            return False
+
+    remote_addr = request.remote_addr
+    if not remote_addr:
+        return False
+
+    return is_loopback_address(remote_addr)
+
+
 def login_required(perm):
     def decorator(func):
         @wraps(func)
@@ -219,3 +329,88 @@ def login_required(perm):
         return wrapper
 
     return decorator
+
+
+def apikey_auth(func):
+    """
+    Decorator that handles API authentication with automatic CSRF exemption.
+    If API authentication is provided using API key, it will:
+    1. Authenticate using the API credentials
+    2. Store user info in flask.g
+    3. Not create or use sessions
+
+    If no API auth is provided, it will use session-based authentication.
+
+    Note: This decorator automatically makes the endpoint CSRF exempt to allow API access.
+    """
+
+    # Apply CSRF exemption at decoration time
+    decorated = csrf_exempt(func)
+
+    @wraps(func)  # Keep the original function's metadata
+    def decorated_function(*args, **kwargs):
+        api = flask.current_app.config["PYLOAD_API"]
+        log = flask.current_app.logger
+
+        # Get client IP, safely handling X-Forwarded-For
+        client_ip = flask.request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or flask.request.remote_addr
+
+        # Check for API key in header
+        api_key = flask.request.headers.get("X-API-Key", None)
+        if api_key is not None:
+            error = "Invalid API key"
+            if api_key.startswith("pl_"):
+                # Look up the API key in the database
+                key_info = api.check_apikey(api_key)
+                if key_info["success"]:
+                    # Get user info from the user_id in the key
+                    user_id = key_info["data"]["user_id"]
+                    key_name = key_info["data"]["name"]
+                    user_data = api.pyload.db.get_all_user_data().get(user_id)
+                    if user_data:
+                        now = int(time.time() * 1000)
+                        last_used = key_info["data"]["last_used"]
+                        user_info = {
+                            "id": user_id,
+                            "name": user_data["name"],
+                            "role": user_data["role"],
+                            "permission": user_data["permission"],
+                        }
+                        flask.g.user_info = user_info
+                        # Log if it has not been used for more than 1 hour
+                        if now >= last_used + 3_600_000:
+                            log.info(f"API authentication successful for user '{user_info['name']}' using the '{key_name}' API key [CLIENT: {client_ip}]")
+                        return decorated(*args, **kwargs)
+                else:
+                    error = key_info["error"]
+
+            # Log failed API key authentication
+            log_api_key = f"{api_key[:4]}********{api_key[-4:]}" if len(api_key) > 8 else "*" * 8
+            log.error(f"API authentication failed using API key {log_api_key} [CLIENT: {client_ip}]")
+            return flask.json.jsonify({"error": error}), 401
+
+        else:
+            # No API auth - still use the decorated function but rely on session auth
+            s = flask.session
+            if is_authenticated(s):
+                csrf.protect()
+                user_info = {
+                    "id": s["id"],
+                    "name": s["name"],
+                    "role": s["role"],
+                    "permission": s["perms"],
+                }
+                flask.g.user_info = user_info
+                return decorated(*args, **kwargs)
+            else:
+                user = s.get("name", "unknown")
+                # Sanitize username for logging
+                sanitized_user = user.replace("\n", "\\n").replace("\r", "\\r")
+                log.error(f"API authentication failed for user '{sanitized_user}' using session [CLIENT: {client_ip}]")
+                return flask.json.jsonify({"error": "Invalid API credentials"}), 401
+
+    return decorated_function
+
+
+# Decorator alias equal to csrf.exempt for convenient import
+csrf_exempt = csrf.exempt

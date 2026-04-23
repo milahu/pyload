@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import re
 import time
 
@@ -50,7 +48,7 @@ class UptoboxCom(BaseAccount):
         html = self.load(
             self.LOGIN_URL,
             post={"login": user, "password": password},
-            ref=self.LOGIN_URL,
+            referrer=self.LOGIN_URL,
         )
 
         if re.search(self.LOGIN_SKIP_PATTERN, html) is None:

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import inspect
 import re
 import urllib.parse
@@ -9,7 +7,6 @@ from pyload.core.utils.misc import eval_js
 
 from ..anticaptchas.ReCaptcha import ReCaptcha
 from ..base.addon import BaseAddon
-from ..helpers import parse_html_header
 
 
 def plugin_id(plugin):
@@ -29,7 +26,7 @@ def is_simple_plugin(obj):
 
 def get_plugin_last_header(plugin):
     # NOTE: req can be a HTTPRequest or a Browser object
-    return plugin.req.http.response_header if hasattr(plugin.req, "http") else plugin.req.response_header
+    return plugin.req.http._header_buffer if hasattr(plugin.req, "http") else plugin.req._header_buffer
 
 
 class CloudFlare:
@@ -49,9 +46,7 @@ class CloudFlare:
                 "{}(): got BadHeader exception {}".format(func_name, exc.code)
             )
 
-            header = parse_html_header(exc.header)
-
-            if "cloudflare" in header.get("server", ""):
+            if "cloudflare" in exc.headers.get("server", ""):
                 if exc.code == 403:
                     data = CloudFlare._solve_cf_security_check(
                         addon_plugin, owner_plugin, exc.content
@@ -66,9 +61,7 @@ class CloudFlare:
                         except BadHeader as exc:  #: Possibly we got another ddos challenge
                             addon_plugin.log_debug(f"{func_name}(): got BadHeader exception {exc.code}")
 
-                            header = parse_html_header(exc.header)
-
-                            if exc.code == 503 and "cloudflare" in header.get("server", ""):
+                            if exc.code == 503 and "cloudflare" in exc.headers.get("server", ""):
                                 continue  #: Yes, it's a ddos challenge again..
 
                             else:
@@ -175,7 +168,7 @@ class CloudFlare:
 
             owner_plugin.wait()  #: Do the actual wait
 
-            return owner_plugin.load(submit_url, get=get_params, ref=last_url)
+            return owner_plugin.load(submit_url, get=get_params, referrer=last_url)
 
         except BadHeader as exc:
             raise exc  #: Huston, we have a BadHeader!
@@ -201,7 +194,7 @@ class CloudFlare:
                 return owner_plugin.load(
                     owner_plugin.fixurl("/cdn-cgi/l/chk_captcha"),
                     get={"g-recaptcha-response": response},
-                    ref=last_url,
+                    referrer=last_url,
                 )
 
             else:

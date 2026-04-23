@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import re
 
 from pyload.core.network.http.exceptions import BadHeader
@@ -168,7 +166,7 @@ class SimpleDecrypter(BaseDecrypter):
             return
 
         self.data = self.load(
-            self.pyfile.url, cookies=self.COOKIES, ref=False, decode=self.TEXT_ENCODING
+            self.pyfile.url, cookies=self.COOKIES, referrer=False, decode=self.TEXT_ENCODING
         )
 
     def _prepare(self):

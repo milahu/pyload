@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import importlib.util
 from collections.abc import Iterable, Mapping, Sequence
 
@@ -31,7 +29,7 @@ def methods(obj):
     return [name for name in dir(obj) if has_method(obj, name)]
 
 
-def proprieties(obj):
+def properties(obj):
     """List all the propriety attribute declared in obj."""
     return [name for name in dir(obj) if has_propriety(obj, name)]
 

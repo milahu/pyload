@@ -1,16 +1,14 @@
-# -*- coding: utf-8 -*-
-
 import os
 import time
+import urllib
 from logging import getLogger
 
 import pycurl
 from pyload import APPID
 
-from ..exceptions import Abort
+from ..exceptions import Abort, Fail
 from .http_chunk import ChunkInfo, HTTPChunk
 from .http_request import BadHeader
-from .aia_retry_wrap_download import aia_retry_wrap_download
 
 
 class HTTPDownload:
@@ -23,23 +21,23 @@ class HTTPDownload:
         url,
         filename,
         size=0,
-        get={},
-        post={},
+        get=None,
+        post=None,
         referer=None,
         cj=None,
         bucket=None,
-        options={},
+        options=None,
         status_notify=None,
         disposition=False,
     ):
         self.url = url
         self.filename = filename  #: complete file destination, not only name
-        self.get = get
-        self.post = post
+        self.get = get or {}
+        self.post = post or {}
         self.referer = referer
         self.cj = cj  #: cookiejar if cookies are needed
         self.bucket = bucket
-        self.options = options
+        self.options = options or {}
         self.disposition = disposition
         #: all arguments
 
@@ -74,7 +72,7 @@ class HTTPDownload:
     @property
     def speed(self):
         #: bytes per second
-        return sum(self.last_speeds) // len(self.last_speeds)  #: average
+        return int(sum(self.last_speeds) // len(self.last_speeds))  #: average
 
     @property
     def arrived(self):
@@ -145,8 +143,13 @@ class HTTPDownload:
                     self.close_chunk(chunk)
 
                 return self._download(chunks, False)
+            elif code == 42:
+                hostname = urllib.parse.urlparse(self.url).hostname
+                raise Fail(f"Refusing to download from Server-Side host '{hostname}'")
+
             else:
                 raise
+
         finally:
             self.close()
 
@@ -155,7 +158,6 @@ class HTTPDownload:
         else:
             return None
 
-    @aia_retry_wrap_download
     def _download(self, chunks, resume):
         if not resume:
             self.info.clear()
@@ -248,7 +250,8 @@ class HTTPDownload:
                     if errno != pycurl.E_WRITE_ERROR or not chunk.aborted:
                         failed.append(chunk)
                         ex = pycurl.error(errno, msg)
-                        self.log.debug(f"Chunk {chunk.id + 1} failed: {ex}")
+                        if errno != pycurl.E_ABORTED_BY_CALLBACK:
+                            self.log.debug(f"Chunk {chunk.id + 1} failed: {ex}")
                         continue
 
                     try:  #: check if the header implies success, else add it to failed list
@@ -347,6 +350,8 @@ class HTTPDownload:
         for chunk in self.chunks:
             if chunk.c == handle:
                 return chunk
+
+        return None
 
     def close_chunk(self, chunk):
         try:

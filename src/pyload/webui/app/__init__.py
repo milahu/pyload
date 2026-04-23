@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #       ____________
 #   ___/       |    \_____________ _                 _ ___
 #  /        ___/    |    _ __ _  _| |   ___  __ _ __| |   \
@@ -25,7 +24,6 @@ from .processors import CONTEXT_PROCESSORS
 
 #: flask app singleton?
 class App:
-
     JINJA_TEMPLATE_GLOBALS = TEMPLATE_GLOBALS
     JINJA_TEMPLATE_FILTERS = TEMPLATE_FILTERS
     JINJA_CONTEXT_PROCESSORS = CONTEXT_PROCESSORS
@@ -33,7 +31,6 @@ class App:
     FLASK_BLUEPRINTS = BLUEPRINTS
     FLASK_EXTENSIONS = EXTENSIONS
     FLASK_THEMES = THEMES
-
 
     @classmethod
     def _configure_config(cls, app, develop):
@@ -65,17 +62,15 @@ class App:
             app.register_error_handler(exc, fn)
 
         @app.after_request
-        def deny_iframe(response):
+        def set_security_headers(response):
             response.headers["Content-Security-Policy"] = "frame-ancestors 'self';"
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
+            if app.config["PYLOAD_API"].get_config_value("webui", "use_ssl"):
+                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
             return response
-
-        # Dynamically set SESSION_COOKIE_SECURE according to the value of X-Forwarded-Proto
-        @app.before_request
-        def set_session_cookie_secure():
-            x_forwarded_proto = flask.request.headers.get("X-Forwarded-Proto")
-            if x_forwarded_proto is not None:
-                is_secure = x_forwarded_proto.split(',')[0].strip() == "https"
-                flask.current_app.config['SESSION_COOKIE_SECURE'] = is_secure
 
     @classmethod
     def _configure_json_encoding(cls, app):
@@ -112,19 +107,27 @@ class App:
             app.context_processor(fn)
 
     @classmethod
-    def _configure_session(cls, app):
-        tempdir = app.config["PYLOAD_API"].get_cachedir()
-        cache_path = os.path.join(tempdir, "flask")
-        os.makedirs(cache_path, exist_ok=True)
+    def _configure_session(cls, app, path_prefix):
+        api = app.config["PYLOAD_API"]
 
-        app.config["SESSION_FILE_DIR"] = cache_path
+        use_ssl = api.get_config_value("webui", "use_ssl")
+        webui_port = api.get_config_value("webui", "port")
+        cookie_prefix = f"{'' if use_ssl is False else '__Host-' if path_prefix == r'/' else '__Secure-'}"
+        session_cookie_name = f"{cookie_prefix}pyload_session_{webui_port}"
+        session_storage_path = os.path.join(api.get_cachedir(), "flask")
+        os.makedirs(session_storage_path, exist_ok=True)
+
+        app.config["SESSION_FILE_DIR"] = session_storage_path
         app.config["SESSION_TYPE"] = "filesystem"
-        app.config["SESSION_COOKIE_NAME"] = "pyload_session_" + str(app.config["PYLOAD_API"].get_config_value("webui", "port"))
+        app.config["SESSION_COOKIE_NAME"] = session_cookie_name
+        app.config["SESSION_COOKIE_PATH"] = path_prefix
+        app.config["SESSION_COOKIE_HTTPONLY"] = True
         app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
-        app.config["SESSION_COOKIE_SECURE"] = app.config["PYLOAD_API"].get_config_value("webui", "use_ssl")
+        app.config["SESSION_COOKIE_SECURE"] = use_ssl
         app.config["SESSION_PERMANENT"] = False
+        app.config["SESSION_REFRESH_EACH_REQUEST"] = False
 
-        session_lifetime = max(app.config["PYLOAD_API"].get_config_value("webui", "session_lifetime"), 1) * 60
+        session_lifetime = max(api.get_config_value("webui", "session_lifetime"), 1) * 60
         app.config["PERMANENT_SESSION_LIFETIME"] = session_lifetime
 
     @classmethod
@@ -144,7 +147,7 @@ class App:
         cls._configure_config(app, develop)
         cls._configure_templating(app)
         cls._configure_json_encoding(app)
-        cls._configure_session(app)
+        cls._configure_session(app, path_prefix or r"/")
         cls._configure_blueprints(app, path_prefix)
         cls._configure_extensions(app)
         cls._configure_themes(app, path_prefix or "")

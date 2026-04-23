@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import time
 from functools import partial, wraps
 from threading import Condition, Lock, RLock, current_thread
@@ -17,6 +15,7 @@ def lock(func=None, **kwgs):
 
     @wraps(func)
     def wrapped(self, *args, **kwargs):
+        # print(f"lock: wrapped: self = {self}, args = {args}, kwargs = {kwargs}")
         self.lock.acquire(**kwgs)
         try:
             return func(self, *args, **kwargs)

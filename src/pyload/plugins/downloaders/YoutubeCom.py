@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import json
 import operator
 import os
@@ -9,13 +7,13 @@ import time
 import urllib.parse
 from datetime import timedelta
 from functools import reduce
-from xml.dom.minidom import parseString as parse_xml
+from defusedxml.minidom import parseString as parse_xml
 
 from pyload import PKGDIR
 from pyload.core.network.exceptions import Abort, Skip
 from pyload.core.network.http.http_request import HTTPRequest
 from pyload.core.utils.convert import to_str
-from pyload.core.utils.old import safename
+from pyload.core.utils.fs import safename
 from pyload.core.utils.purge import uniquify
 
 from ..base.downloader import BaseDownloader

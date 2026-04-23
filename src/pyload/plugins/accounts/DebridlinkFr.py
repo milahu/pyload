@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import json
 import time
 
@@ -31,12 +29,10 @@ class DebridlinkFr(MultiAccount):
     #: See https://debrid-link.fr/api_doc/v2
     API_URL = "https://debrid-link.fr/api/"
 
-    def api_request(self, method, get={}, post={}):
+    def api_request(self, method, get=None, post=None):
         api_token = self.info["data"].get("api_token", None)
         if api_token and method != "oauth/token":
-            self.req.http.c.setopt(
-                pycurl.HTTPHEADER, ["Authorization: Bearer " + api_token]
-            )
+            self.req.http.set_header("Authorization", f"Bearer {api_token}")
         self.req.http.c.setopt(pycurl.USERAGENT, "pyLoad/{}".format(self.pyload.version))
         try:
             json_data = self.load(self.API_URL + method, get=get, post=post)
@@ -95,7 +91,7 @@ class DebridlinkFr(MultiAccount):
                 api_data.get("error_description", error_description(api_data["error"])),
             )
             validuntil = None
-            premium = None
+            premium = False
 
         return {"validuntil": validuntil, "trafficleft": -1, "premium": premium}
 

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import hashlib
 import json
 import time
@@ -32,7 +30,7 @@ class DebridplanetCom(MultiAccount):
         token = self.info["data"].get("token")
         if token is not None:
             self.req.http.c.setopt(
-                pycurl.HTTPHEADER, ["Authorization: Bearer " + token]
+                self.req.http.set_header("Authorization", f"Bearer {token}")
             )
         json_data = self.load(f"{self.API_URL}{method}.php", post=json.dumps(kwargs))
         return json.loads(json_data)

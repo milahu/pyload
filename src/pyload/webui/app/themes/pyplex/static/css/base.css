@@ -490,3 +490,11 @@ fieldset[disabled] .btn {
 #cap_textual_img:hover, #cap_textual_img:active{
   filter: brightness(51%) contrast(6400%) grayscale(100%);
 }
+
+.mdtoast {
+  justify-content: center
+}
+
+.mdtoast .mdt-message {
+  text-align: center;
+}

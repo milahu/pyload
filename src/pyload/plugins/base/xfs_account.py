@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import locale
 import re
 import time
@@ -7,14 +5,14 @@ import urllib.parse
 
 from pyload.core.utils import parse
 
-from ..helpers import parse_html_form, set_cookie, search_pattern
+from ..helpers import parse_html_form, search_pattern
 from .account import BaseAccount
 
 
 class XFSAccount(BaseAccount):
     __name__ = "XFSAccount"
     __type__ = "account"
-    __version__ = "0.66"
+    __version__ = "0.67"
     __status__ = "stable"
 
     __config__ = [
@@ -58,7 +56,7 @@ class XFSAccount(BaseAccount):
         if isinstance(self.COOKIES, list) and cookie not in self.COOKIES:
             self.COOKIES.insert(cookie)
         else:
-            set_cookie(self.req.cj, *cookie)
+            self.req.cj.set_cookie(*cookie)
 
     def setup(self):
         if not self.PLUGIN_DOMAIN:
@@ -81,7 +79,6 @@ class XFSAccount(BaseAccount):
         validuntil = None
         trafficleft = None
         leechtraffic = None
-        premium = None
 
         if not self.PLUGIN_URL:  # TODO: Remove in 0.6.x
             return

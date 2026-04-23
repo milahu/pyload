@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import json
 import re
 import urllib.parse
@@ -65,7 +63,7 @@ class EasyuploadIo(SimpleDownloader):
 
         data = self.load(
             action_url,
-            ref="https://easyupload.io/",
+            referrer="https://easyupload.io/",
             post={
                 "type": "download-token",
                 "url": self.info["pattern"]["ID"],

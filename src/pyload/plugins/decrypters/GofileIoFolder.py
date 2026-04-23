@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import base64
 import json
 
@@ -36,11 +34,9 @@ class GofileIoFolder(BaseDecrypter):
 
     API_URL = "https://api.gofile.io/"
 
-    def api_request(self, method, token=None, get={}, post={}):
+    def api_request(self, method, token=None, get=None, post=None):
         if token is not None:
-            self.req.http.c.setopt(
-                pycurl.HTTPHEADER, ["Authorization: Bearer " + token]
-            )
+            self.req.http.set_header("Authorization", f"Bearer {token}")
         try:
             json_data = self.load(self.API_URL + method, get=get, post=post)
         except BadHeader as exc:

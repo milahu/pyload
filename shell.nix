@@ -11,7 +11,7 @@ pkgs.mkShell {
     # TODO are these actually available on runtime?
     unrar # unfree
     rhino
-    spidermonkey_91
+    # spidermonkey_91
     gocr
 
     (python3.withPackages (pp: with pp; [
@@ -22,7 +22,8 @@ pkgs.mkShell {
       packaging
 
     # propagatedBuildInputs
-    pycurl
+    # pycurl
+    nur.repos.milahu.python3.pkgs.pycurl
     jinja2
     # fix: error: Package ‘python3.10-Beaker-1.11.0’ in /nix/store/qb3dg4cx5jzk3pa8szzi0ziwnqy33p50-source/pkgs/development/python-modules/beaker/default.nix:72 is marked as insecure, refusing to evaluate.
     # also, beaker is not needed any more
@@ -38,7 +39,9 @@ pkgs.mkShell {
 
     # version switch since pyload 1da386c2
     #js2py # python <3.12
-    dukpy # python >=3.12
+    # FIXME dukpy was removed from nixpkgs
+    # dukpy # python >=3.12
+    nur.repos.milahu.python3.pkgs.dukpy
 
     # FIXME: ERROR: Could not find a version that satisfies the requirement Flask>=2.3.0; python_version >= "3.8"
     # pkgs.python3.pkgs.flask.version = "2.2.5"
@@ -46,7 +49,9 @@ pkgs.mkShell {
     flask
     flask-compress
     flask-caching
-    flask-themes2
+    # FIXME flask-themes2 was removed from nixpkgs
+    # flask-themes2
+    nur.repos.milahu.python3.pkgs.flask-themes2
     filetype
     semver
     cheroot
@@ -66,6 +71,16 @@ pkgs.mkShell {
     # extra deps for aia:
     pyopenssl
     timeout-decorator
+
+    nur.repos.milahu.python3.pkgs.py-mini-racer
+
+    wtforms
+
+    nur.repos.milahu.python3.pkgs.aia-chaser
+
+    pydantic
+
+    flask-wtf
 
     # hot-reload
     #jurigged

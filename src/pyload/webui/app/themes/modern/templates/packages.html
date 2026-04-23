@@ -39,13 +39,13 @@
           <span class="packageicon glyphicon glyphicon-folder-close" style="margin-right: 5px;"></span>
           <span class="name" style="font-size: 16px; font-weight: bold;">{{package.name}}</span>
           <span class="buttons" style="opacity:0">
-            <span class="glyphicon glyphicon-trash" title="{{_('Delete Package')}}" style="margin-left: 10px; color:#555; cursor: pointer; width:12px; height:12px;" ></span>
-            <span class="glyphicon glyphicon-repeat" title="{{_('Restart Package')}}" style=" cursor: pointer; color:#555; height:12px;" ></span>
-            <span class="glyphicon glyphicon-pencil" title="{{_('Edit Package')}}" style="cursor: pointer; color:#555; height:12px;" ></span>
-            <span class="glyphicon glyphicon-transfer" title="{{_('Move Package To')}} {% if target %}{{_('Collector')}}{% else %}{{_('Queue')}}{% endif %}" style="cursor: pointer; color:#555; height:12px;" ></span>
-            <span class="glyphicon glyphicon-sort" title="{{_('Reverse Entries')}}" style="cursor: pointer; color:#555; height:12px;" ></span>
+            <span class="glyphicon glyphicon-trash" title="{{_('Delete Package')}}" style="margin-left: 10px; cursor: pointer; color:#555; width:12px; height:12px;" ></span>
+            <span class="glyphicon glyphicon-repeat" title="{{_('Restart Package')}}" style="margin-left: 10px; cursor: pointer; color:#555; height:12px;" ></span>
+            <span class="glyphicon glyphicon-pencil" title="{{_('Edit Package')}}" style="margin-left: 10px; cursor: pointer; color:#555; height:12px;" ></span>
+            <span class="glyphicon glyphicon-transfer" title="{{_('Move Package To')}} {% if target %}{{_('Collector')}}{% else %}{{_('Queue')}}{% endif %}" style="margin-left: 10px; cursor: pointer; color:#555; height:12px;" ></span>
+            <span class="glyphicon glyphicon-sort" title="{{_('Reverse Entries')}}" style="margin-left: 10px; cursor: pointer; color:#555; height:12px;" ></span>
             {% if has_extract %}
-            <span class="glyphicon glyphicon-fullscreen" title="{{_('Extract Package')}}" style="cursor: pointer; color:#555; height:12px;" ></span>
+            <span class="glyphicon glyphicon-fullscreen" title="{{_('Extract Package')}}" style="margin-left: 10px; cursor: pointer; color:#555; height:12px;" ></span>
             {% endif %}
           </span>
          </div>
@@ -92,8 +92,8 @@
                 <p class="help-block">{{_('Name of subfolder for these downloads')}}</p>
             </div>
             <div class="form-group">
-                <label for="pack_pws">{{_('Password')}}</label>
-                <input class="form-control" name="pack_pws" id="pack_pws" type="text" />
+                <label for="pack_pwd">{{_('Password')}}</label>
+                <input class="form-control" name="pack_pwd" id="pack_pwd" type="text" />
                 <p class="help-block">{{_('The package password')}}</p>
             </div>
           <button class="btn btn-primary" type="submit" style="float: right">{{_('Submit')}}</button>

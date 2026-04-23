@@ -6,7 +6,7 @@
 <h4 align="center">
   <img alt="status" src="https://img.shields.io/pypi/status/pyload-ng?style=flat-square">
   <a href="https://github.com/pyload/pyload/actions">
-    <img alt="build" src="https://img.shields.io/github/actions/workflow/status/pyload/pyload/test.yml?event=push&style=flat-square">
+    <img alt="build" src="https://img.shields.io/github/actions/workflow/status/pyload/pyload/build-and-deploy.yml">
   </a>
   <a href="https://www.codacy.com/gh/pyload/pyload">
     <img alt="codacy" src="https://img.shields.io/codacy/grade/1d047f77c0a6496eb708e1b3ca83006b?label=grade&style=flat-square">
@@ -23,13 +23,15 @@
 <br />
 <br />
 
-## Choose your Version
+## Overview
 
-**The newest version of pyLoad** running on Python 3.6+ and PyPy (experimental) is developed in the [main branch on GitHub](https://github.com/pyload/pyload/tree/main) and published as [pyload-ng on PyPI](https://pypi.org/project/pyload-ng/).
+pyLoad is a lightweight, pure-Python download manager with a modern web UI and rich plugin ecosystem. It automates downloads from one-click hosters, cloud drives, and many other sources; supports premium accounts, captcha-solving services, and link decryption; and can run headless on servers, NAS devices, or desktops. Designed for extensibility and low resource usage.
 
-**The old version of pyLoad** working on Python 2 is still available in the [stable branch on GitHub](https://github.com/pyload/pyload/tree/stable), pre-built packages are available for download on the [releases page on GitHub](https://github.com/pyload/pyload/releases).
+## Introduction
 
-This README covers only the latest version of pyLoad.
+- Cross-platform: works on Linux, macOS, and Windows (Python 3.9+)
+- Web interface: manage downloads from your browser
+- Plugin-driven: hundreds of hosters, decrypters, and addons (notifications, schedulers, extractors, etc.)
 
 ## Quick Start
 
@@ -152,6 +154,61 @@ Invoke `build_locale` before building the package (eg. `bdist_wheel`).
 >
 > You don't need to build the translations if you installed pyLoad through `pip`, they're already included.
 
+## Development
+
+### Set up your development environment
+
+* Clone the repository
+* Recommended: create a virtual environment for pyLoad
+```
+python3 -m venv .venv
+source .venv/bin/activate
+```
+* Install pyLoad as editable install with main and test dependencies
+```
+pip install -e ".[test]"
+```
+* Run pyLoad in debug mode
+```
+pyload -d
+```
+* To run the tests locally
+```
+pytest tests
+```
+
+### API specification
+
+pyLoad provides an OpenAPI specification for its REST API, visible via Swagger UI under the endpoint
+
+    <pyload base url>/api/
+
+The specification file itself is available under
+
+    <pyload base url>/api/openapi.json
+
+For reference, there is a local copy of the API specification in `openapi-generator/openapi.json`.
+Based on this file, it is possible to generate client code with the [official OpenAPI code generator](https://github.com/OpenAPITools/openapi-generator).
+For example, this command will generate a client for Android, using the dockerized generator:
+```
+docker run --rm -v "${PWD}:/local" openapitools/openapi-generator-cli generate \
+  -i /local/openapi-generator/openapi.json \
+  -g java \
+  -o /local/openapi-generator/out \
+  --additional-properties library=retrofit2,serializationLibrary=gson,openApiNullable=false,hideGenerationTimestamp=true,invokerPackage=org.pyload.android.openapi,apiPackage=org.pyload.android.openapi.api,modelPackage=org.pyload.android.openapi.models
+```
+
+If you are developing a client application for pyLoad, you can use this specification to generate a client
+in any language / framework the OpenAPI generator supports.
+
+The API specification is parsed from the REST API implementation.
+The local `openapi.json` copy should not be edited manually.
+Instead, if changes have been made to the API, re-generate the specification file by running
+
+    pyload --generate-api-spec 
+
+which will update the `openapi.json` file in place.
+
 ## Report a Vulnerability
 
 Please refer to [SECURITY](https://github.com/pyload/pyload/blob/main/SECURITY.md) to read our security policy.
@@ -163,14 +220,16 @@ Please refer to [CONTRIBUTING](https://github.com/pyload/pyload/blob/main/CONTRI
 ## Docker Images
 
 [![Docker build status](https://img.shields.io/docker/build/pyload/pyload?style=flat-square)](https://hub.docker.com/r/pyload/pyload)
-[![MicroBadger layers](https://img.shields.io/microbadger/layers/pyload/pyload?style=flat-square)](https://microbadger.com/images/pyload/pyload)
-[![MicroBadger size](https://img.shields.io/microbadger/image-size/pyload/pyload?style=flat-square)](https://microbadger.com/images/pyload/pyload)
 
 #### Available images
 
--   `pyload/pyload:alpine`: docker image for amd64, arm and arm64v8.
--   `pyload/pyload:ubuntu-arm32v7`: docker image for arm32v7.
--   `pyload/pyload`: alias of `pyload/pyload:alpine`.
+-   [linuxserver/pyload-ng](https://hub.docker.com/r/linuxserver/pyload-ng)
+
+[//]: # (-   `pyload/pyload:alpine`: docker image for amd64, arm and arm64v8.)
+
+[//]: # (-   `pyload/pyload:ubuntu-arm32v7`: docker image for arm32v7.)
+
+[//]: # (-   `pyload/pyload`: alias of `pyload/pyload:alpine`.)
 
 ### Create Container
 
@@ -251,7 +310,7 @@ To show the version of your **default** Python interpreter, type the command:
 
 If the version is too old, try to upgrage Python, then you can retry to install pyLoad.
 
-Python releases below version 3.6 are not supported!
+Python releases below version 3.9 are not supported!
 
 ### Setuptools is too old
 
@@ -320,4 +379,4 @@ Please refer to [AUTHORS](https://github.com/pyload/pyload/blob/main/AUTHORS.md)
 
 ---
 
-###### © 2008-2025 pyLoad team
+###### © 2008-2026 pyLoad team

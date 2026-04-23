@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import hashlib
 import json
 
@@ -34,13 +32,9 @@ class LinkifierCom(MultiAccount):
             "apiKey": self.API_KEY,
         }
         post.update(kwargs)
-        self.req.http.c.setopt(
-            pycurl.HTTPHEADER, ["Content-Type: application/json; charset=utf-8"]
-        )
+        self.req.http.set_header("Content-Type", "application/json; charset=utf-8")
         res = json.loads(self.load(self.API_URL + method, post=json.dumps(post)))
-        self.req.http.c.setopt(
-            pycurl.HTTPHEADER, ["Content-Type: text/html; charset=utf-8"]
-        )
+        self.req.http.set_header("Content-Type", "text/html; charset=utf-8")
         return res
 
     def grab_hosters(self, user, password, data):

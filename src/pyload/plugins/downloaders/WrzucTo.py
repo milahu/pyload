@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import re
 
 import pycurl
@@ -38,13 +37,11 @@ class WrzucTo(SimpleDownloader):
         if len(data) != 2:
             self.error(self._("No file ID"))
 
-        self.req.http.c.setopt(pycurl.HTTPHEADER, ["X-Requested-With: XMLHttpRequest"])
-        self.req.http.last_url = pyfile.url
-        self.load("http://www.wrzuc.to/ajax/server/prepair", post={"md5": data["md5"]})
+        self.req.http.set_header("X-Requested-With", "XMLHttpRequest")
+        self.load("http://www.wrzuc.to/ajax/server/prepair", post={"md5": data["md5"]}, referrer=pyfile.url)
 
-        self.req.http.last_url = pyfile.url
         self.data = self.load(
-            "http://www.wrzuc.to/ajax/server/download_link", post={"file": data["file"]}
+            "http://www.wrzuc.to/ajax/server/download_link", post={"file": data["file"]}, referrer=pyfile.url
         )
 
         data.update(re.findall(r'"(download_link|server_id)":"(.*?)"', self.data))

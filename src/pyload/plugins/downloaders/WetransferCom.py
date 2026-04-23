@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import json
 import re
 
@@ -36,10 +34,8 @@ class WetransferCom(SimpleDownloader):
     API_URL = "https://wetransfer.com/api/v4/"
 
     def api_request(self, method, file_id, **kwargs):
-        self.req.http.c.setopt(
-            pycurl.HTTPHEADER,
-            ["X-Requested-With: XMLHttpRequest", "Content-Type: application/json"],
-        )
+        self.req.http.set_header("X-Requested-With", "XMLHttpRequest")
+        self.req.http.set_header("Content-Type", "application/json")
 
         try:
             json_data = self.load(

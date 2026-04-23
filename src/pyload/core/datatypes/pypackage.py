@@ -1,8 +1,5 @@
-# -*- coding: utf-8 -*-
-
-
 from ..managers.event_manager import UpdateEvent
-from ..utils.old import safepath
+from ..utils.fs import safepath
 
 
 class PyPackage:

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import json
 import re
 import time
@@ -65,7 +63,7 @@ class RapiduNet(SimpleDownloader):
 
     def handle_free(self, pyfile):
         self.req.http.last_url = pyfile.url
-        self.req.http.c.setopt(pycurl.HTTPHEADER, ["X-Requested-With: XMLHttpRequest"])
+        self.req.http.set_header("X-Requested-With", "XMLHttpRequest")
 
         json_data = self.get_json_response(
             "https://rapidu.net/ajax.php",

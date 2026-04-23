@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import json
 import re
 from datetime import timedelta
@@ -9,13 +8,14 @@ from pyload.core.utils import seconds
 
 from ..anticaptchas.ReCaptcha import ReCaptcha
 from ..anticaptchas.SolveMedia import SolveMedia
+from ..anticaptchas.Turnstile import Turnstile
 from ..base.simple_downloader import SimpleDownloader
 
 
 class RapidgatorNet(SimpleDownloader):
     __name__ = "RapidgatorNet"
     __type__ = "downloader"
-    __version__ = "0.59"
+    __version__ = "0.60"
     __status__ = "testing"
 
     __pattern__ = r"https?://(?:www\.)?(?:rapidgator\.(?:net|asia|)|rg\.to)/file/(?P<ID>\w+)"
@@ -151,12 +151,12 @@ class RapidgatorNet(SimpleDownloader):
         url = "https://rapidgator.net{}".format(
             jsvars.get("captchaUrl", "/download/captcha")
         )
-        self.data = self.load(url, ref=pyfile.url)
+        self.data = self.load(url, referrer=pyfile.url)
 
         m = re.search(self.LINK_FREE_PATTERN, self.data)
         if m is not None:
             # self.link = m.group(1)
-            self.download(m.group(1), ref=url)
+            self.download(m.group(1), referrer=url)
 
         else:
             captcha = self.handle_captcha()
@@ -164,7 +164,11 @@ class RapidgatorNet(SimpleDownloader):
             if not captcha:
                 self.error(self._("Captcha pattern not found"))
 
-            if isinstance(captcha, ReCaptcha):
+            if isinstance(captcha, Turnstile):
+                response = captcha.challenge()
+                post_params = {"cf-turnstile-response": response}
+
+            elif isinstance(captcha, ReCaptcha):
                 response = captcha.challenge()
                 post_params = {"g-recaptcha-response": response}
 
@@ -176,7 +180,7 @@ class RapidgatorNet(SimpleDownloader):
                 }
 
             post_params["DownloadCaptchaForm[verifyCode]"] = response
-            self.data = self.load(url, post=post_params, ref=url)
+            self.data = self.load(url, post=post_params, referrer=url)
 
             if "The verification code is incorrect" in self.data:
                 self.retry_captcha()
@@ -185,20 +189,21 @@ class RapidgatorNet(SimpleDownloader):
                 m = re.search(self.LINK_FREE_PATTERN, self.data)
                 if m is not None:
                     # self.link = m.group(1)
-                    self.download(m.group(1), ref=url)
+                    self.download(m.group(1), referrer=url)
 
     def handle_captcha(self):
-        for klass in (ReCaptcha, SolveMedia):
+        for klass in (Turnstile, ReCaptcha, SolveMedia):
             captcha = klass(self.pyfile)
             if captcha.detect_key():
                 self.captcha = captcha
                 return captcha
 
     def get_json_response(self, url):
-        self.req.http.c.setopt(pycurl.HTTPHEADER, ["X-Requested-With: XMLHttpRequest"])
+        self.req.http.set_header("X-Requested-With", "XMLHttpRequest")
 
-        res = self.load(url, ref=self.pyfile.url)
-        self.req.http.c.setopt(pycurl.HTTPHEADER, ["X-Requested-With:"])
+        res = self.load(url, referrer=self.pyfile.url)
+
+        self.req.http.remove_header("X-Requested-With")
 
         if not res.startswith("{"):
             self.retry()

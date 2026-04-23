@@ -1,22 +1,26 @@
-# -*- coding: utf-8 -*-
-
 import codecs
 import io
 import mimetypes
 import os
+import tempfile
 from itertools import chain
 from logging import getLogger
 from urllib.parse import quote, urlencode
 
 import pycurl
+from aia_chaser import AiaChaser
+from cryptography.hazmat.primitives.serialization import Encoding
 
 from pyload import APPID
 
 from ...utils.check import is_mapping
 from ...utils.convert import to_bytes, to_str
+from ...utils.web.check import is_global_address
+from ...utils.web.parse import http_header as parse_header_line
+from ...utils.web.purge import unescape as html_unescape
 from ..exceptions import Abort
 from .exceptions import BadHeader
-from .aia_retry_wrap_download import aia_retry_wrap_download
+from .http_headers import HttpHeaders
 
 if not hasattr(pycurl, "PROXYTYPE_HTTPS"):
     pycurl.PROXYTYPE_HTTPS = 2
@@ -67,30 +71,37 @@ class HTTPRequest:
     def __init__(self, cookies=None, options=None, limit=2_000_000):
         self.exception = None
         self.limit = limit
+        self.allow_private_ip = True
 
         self.c = pycurl.Curl()
-        self.rep = None
 
         self.cj = cookies  #: cookiejar
+
+        self.auth = None
 
         self.last_url = None
         self.last_effective_url = None
         self.code = 0  #: last http code
 
-        self.response_header = b""
+        self._header_buffer = b""
+        self._body_buffer = None
 
-        self.request_headers = []  #: temporary request header
+        self.request_headers = HttpHeaders()
+        self.response_headers = HttpHeaders()
 
         self.abort = False
         self.decode = False
 
-        self.options = options
+        self.ssl_aiachaser = False
+        self.aia_cainfo = None
 
         self.init_handle()
         self.set_interface(options)
+        self.default_max_redirect = max(options.get("max_redirect", 10), 0) or 5
 
-        self.c.setopt(pycurl.WRITEFUNCTION, self.write_body)
-        self.c.setopt(pycurl.HEADERFUNCTION, self.write_header)
+        self.c.setopt(pycurl.WRITEFUNCTION, self._write_body_callback)
+        self.c.setopt(pycurl.HEADERFUNCTION, self._write_header_callback)
+        self.c.setopt(pycurl.PREREQFUNCTION, self._pre_request_callback)
 
         self.log = getLogger(APPID)
 
@@ -106,12 +117,14 @@ class HTTPRequest:
         """
         self.c.setopt(pycurl.FOLLOWLOCATION, 1)
         self.c.setopt(pycurl.MAXREDIRS, 10)
+        self.c.setopt(pycurl.REDIR_PROTOCOLS, pycurl.PROTO_HTTP | pycurl.PROTO_HTTPS)
         self.c.setopt(pycurl.CONNECTTIMEOUT, 30)
         self.c.setopt(pycurl.NOSIGNAL, 1)
         self.c.setopt(pycurl.NOPROGRESS, 1)
         if hasattr(pycurl, "AUTOREFERER"):
             self.c.setopt(pycurl.AUTOREFERER, 1)
         self.c.setopt(pycurl.SSL_VERIFYPEER, 1)
+        self.c.setopt(pycurl.SSL_VERIFYHOST, 2)
         self.c.setopt(pycurl.LOW_SPEED_TIME, 60)
         self.c.setopt(pycurl.LOW_SPEED_LIMIT, 5)
         if hasattr(pycurl, "USE_SSL"):
@@ -127,17 +140,7 @@ class HTTPRequest:
         if pycurl.version_info()[7]:
             self.c.setopt(pycurl.ENCODING, b"gzip, deflate")
 
-        self.c.setopt(
-            pycurl.HTTPHEADER,
-            [
-                b"Accept: */*",
-                b"Accept-Language: en-US,en",
-                b"Accept-Charset: ISO-8859-1,utf-8;q=0.7,*;q=0.7",
-                b"Connection: keep-alive",
-                b"Keep-Alive: 300",
-                b"Expect:",
-            ],
-        )
+        self.clear_headers()
 
     def set_interface(self, options):
         options = {
@@ -183,31 +186,34 @@ class HTTPRequest:
         else:
             self.c.setopt(pycurl.IPRESOLVE, pycurl.IPRESOLVE_V4)
 
-        if "auth" in options:
-            self.c.setopt(pycurl.USERPWD, options["auth"])
-
         if "timeout" in options:
             self.c.setopt(pycurl.LOW_SPEED_TIME, int(options["timeout"]))
 
         if "ssl_verify" in options:
-            if options["ssl_verify"]:
-                self.c.setopt(pycurl.CAINFO, options["pyload"].ca_bundle_path)
+            aiachaser_on = b"on (using aia-chaser)"
+            if options["ssl_verify"] in [True, b"on", aiachaser_on]:
+                if options["ssl_verify"] == aiachaser_on:
+                    self.ssl_aiachaser = True
+                else:
+                    self.ssl_aiachaser = False
+                    self.c.setopt(pycurl.CAINFO, certifi.where())
                 ssl_verify = 1
             else:
                 ssl_verify = 0
 
             self.c.setopt(pycurl.SSL_VERIFYPEER, ssl_verify)
+            self.c.setopt(pycurl.SSL_VERIFYHOST, ssl_verify * 2)
 
-    def add_cookies(self):
+    def load_cookies(self):
         """
-        put cookies from curl handle to cj.
+        put cookies from curl handle to cookiejar.
         """
         if self.cj:
-            self.cj.add_cookies(self.c.getinfo(pycurl.INFO_COOKIELIST))
+            self.cj.set_cookies(self.c.getinfo(pycurl.INFO_COOKIELIST))
 
-    def get_cookies(self):
+    def send_cookies(self):
         """
-        add cookies from cj to curl handle.
+        send cookies from cookiejar to curl handle.
         """
         if self.cj:
             for c in self.cj.get_cookies():
@@ -217,11 +223,26 @@ class HTTPRequest:
     def clear_cookies(self):
         self.c.setopt(pycurl.COOKIELIST, "")
 
+    def add_auth(self, pwd):
+        """
+        Adds user and pw for http auth.
+
+        :param pwd: str in the form `user:password`
+        """
+        self.auth = pwd
+
+    def remove_auth(self):
+        """
+        Removes the auth from the request.
+        """
+        self.auth = None
+
+
     def set_request_context(self, url, get, post, referer, cookies, multipart=False, decode=True):
         """
         sets everything needed for the request.
         """
-        self.rep = io.BytesIO()
+        self._body_buffer = io.BytesIO()
 
         self.exception = None
 
@@ -233,8 +254,27 @@ class HTTPRequest:
             get = urlencode(get)
             url = f"{url}?{get}"
 
+        if self.ssl_aiachaser and url.startswith("https://"):
+            chaser = AiaChaser()
+            try:
+                pem_data = "".join([
+                    cert.public_bytes(encoding=Encoding.PEM).decode("ascii")
+                    for cert in chaser.fetch_ca_chain_for_url(url)
+                ])
+            except Exception as exc:
+                self.log.warning(f"AiaChaser failed with {exc}")
+                aia_cainfo = certifi.where()
+
+            else:
+                with tempfile.NamedTemporaryFile(mode="wt",prefix="aia_", suffix=".pem", delete=False) as tmp:
+                    tmp.write(pem_data)
+                    if self.aia_cainfo:
+                        os.remove(self.aia_cainfo)
+                    aia_cainfo = self.aia_cainfo = tmp.name
+
+            self.c.setopt(pycurl.CAINFO, aia_cainfo)
+
         self.c.setopt(pycurl.URL, url)
-        self.c.last_url = url
 
         if post:
             self.c.setopt(pycurl.POST, 1)
@@ -279,39 +319,52 @@ class HTTPRequest:
             self.c.setopt(pycurl.POST, 0)
             self.c.setopt(pycurl.HTTPGET, 1)
 
+        if isinstance(referer, str):
+            self.last_url = referer
+
         if referer and self.last_url:
             self.c.setopt(pycurl.REFERER, to_bytes(self.last_url))
 
         if cookies:
             self.c.setopt(pycurl.COOKIEFILE, b"")
             self.c.setopt(pycurl.COOKIEJAR, b"")
-            self.get_cookies()
+            if isinstance(cookies, list) and self.cj:
+                self.cj.set_cookies(cookies)
+            self.send_cookies()
 
-    @aia_retry_wrap_download
+        if self.auth:
+            self.c.setopt(pycurl.USERPWD, to_bytes(self.auth))
+        else:
+            self.c.setopt(pycurl.USERPWD, None)
+
     def load(
         self,
         url,
-        get={},
-        post={},
+        get=None,
+        post=None,
         referer=True,
         cookies=True,
         just_header=False,
         multipart=False,
         decode=True,
-        follow_location=True,
+        redirect=True,
         save_cookies=True,
     ):
         """
         load and returns a given page.
         """
-        self.set_request_context(url, get, post, referer, cookies, multipart, decode)
+        self.set_request_context(url, get, post, referer, cookies, multipart=multipart, decode=decode)
 
-        self.response_header = b""
+        self._header_buffer = b""
+        self.response_headers.clear(use_defaults=False)
 
-        self.c.setopt(pycurl.HTTPHEADER, self.request_headers)
+        self.c.setopt(pycurl.HTTPHEADER, self.request_headers.to_pycurl())
 
-        if not follow_location:
+        if not redirect:
             self.c.setopt(pycurl.FOLLOWLOCATION, 0)
+
+        elif type(redirect) is int:
+            self.c.setopt(pycurl.MAXREDIRS, redirect)
 
         if just_header:
             self.c.setopt(pycurl.NOBODY, 1)
@@ -323,34 +376,122 @@ class HTTPRequest:
                 raise self.exception from None
             else:
                 raise
+        finally:
+            if self.aia_cainfo:
+                os.remove(self.aia_cainfo)
+                self.aia_cainfo = None
 
-        if not follow_location:
-            self.c.setopt(pycurl.FOLLOWLOCATION, 1)
+        if not self.response_headers:
+            self.response_headers.parse(self._header_buffer)
 
         if just_header:
             self.c.setopt(pycurl.NOBODY, 0)
+
+        if not redirect:
+            self.c.setopt(pycurl.FOLLOWLOCATION, 1)
+
+        elif type(redirect) is int:
+            self.c.setopt(pycurl.MAXREDIRS, self.default_max_redirect)
 
         self.c.setopt(pycurl.POSTFIELDS, b"")
         self.last_effective_url = self.c.getinfo(pycurl.EFFECTIVE_URL)
 
         if save_cookies:
-            self.add_cookies()
+            self.load_cookies()
 
         self.code = self.verify_header()
 
-        ret = self.response_header if just_header else self.get_response()
+        res = self._header_buffer if just_header else self.get_response()
 
         if decode:
-            ret = (
-                to_str(ret, encoding="iso-8859-1")
-                if just_header
-                else self.decode_response(ret)
-            )
+            res = self.response_headers if just_header else self.decode_response(res)
 
-        self.rep.close()
-        self.rep = None
+        self._body_buffer.close()
+        self._body_buffer = None
 
-        return ret
+        return res
+
+    def upload(
+        self,
+        filename,
+        url,
+        get=None,
+        referer=True,
+        cookies=True,
+        just_header=False,
+        decode=True,
+        redirect=True,
+        save_cookies=True,
+    ):
+        """
+        Uploads a file at url and returns response content.
+
+        :param filename: path of the file to upload
+        :param url: URL to upload to
+        :param get: Query string parameters
+        :param referer: Either a str with referrer, True to use default, False to disable
+        :param cookies: True or False or list of tuples [(domain, name, value)]
+        :param just_header: If True only the header will be retrieved and returned as dict
+        :param redirect: Either a number with maximum redirections, True to use default or False to disable
+        :param decode: The codec name to decode the output, True to use codec from http header, should be True in most cases
+        :param save_cookies: Weather to save received cookies
+        :return: Response content
+        """
+        with open(os.fsencode(filename), mode="rb") as fp:
+            self.set_request_context(url, get, None, referer, cookies)
+
+            self._header_buffer = b""
+
+            self.c.setopt(pycurl.HTTPHEADER, self.request_headers.to_pycurl())
+
+            if not redirect:
+                self.c.setopt(pycurl.FOLLOWLOCATION, 0)
+
+            elif isinstance(redirect, int):
+                self.c.setopt(pycurl.MAXREDIRS, redirect)
+
+            self.c.setopt(pycurl.UPLOAD, 1)
+            self.c.setopt(pycurl.READFUNCTION, fp.read)
+            self.c.setopt(pycurl.INFILESIZE, os.fstat(fp.fileno()).st_size)
+
+            if just_header:
+                self.c.setopt(pycurl.NOBODY, 1)
+
+            self.c.perform()
+
+            if just_header:
+                self.c.setopt(pycurl.NOBODY, 0)
+
+            if not redirect:
+                self.c.setopt(pycurl.FOLLOWLOCATION, 1)
+
+            elif type(redirect) is int:
+                self.c.setopt(pycurl.MAXREDIRS, self.default_max_redirect)
+
+            self.c.setopt(pycurl.UPLOAD, 0)
+            self.c.setopt(pycurl.INFILESIZE, 0)
+
+            self.c.setopt(pycurl.POSTFIELDS, "")
+            self.last_effective_url = self.c.getinfo(pycurl.EFFECTIVE_URL)
+
+            if save_cookies:
+                self.load_cookies()
+
+            self.code = self.verify_header()
+
+            res = self._header_buffer if just_header else self.get_response()
+
+            if decode:
+                res = (
+                    to_str(res, encoding="iso-8859-1")
+                    if just_header
+                    else self.decode_response(res)
+                )
+
+            self._body_buffer.close()
+            self._body_buffer = None
+
+            return res
 
     def verify_header(self):
         """
@@ -359,12 +500,11 @@ class HTTPRequest:
         code = int(self.c.getinfo(pycurl.RESPONSE_CODE))
         if code in BAD_STATUS_CODES:
             response = self.decode_response(self.get_response()) if self.decode else self.get_response()
-            header = to_str(self.response_header, encoding="iso-8859-1") if self.decode else self.response_header
-            self.rep.close()
-            self.rep = None
+            self._body_buffer.close()
+            self._body_buffer = None
 
             # 404 will NOT raise an exception
-            raise BadHeader(code, header, response)
+            raise BadHeader(code, self.response_headers, response)
 
         return code
 
@@ -378,28 +518,27 @@ class HTTPRequest:
         """
         retrieve response from bytes io.
         """
-        if self.rep is None:
+        if self._body_buffer is None:
             return b""
         else:
-            return self.rep.getvalue()
+            return self._body_buffer.getvalue()
 
     def decode_response(self, response):
         """
         decode with correct encoding, relies on header.
         """
-        header = self.response_header.splitlines()
         encoding = "utf-8"  #: default encoding
 
-        for line in header:
-            line = line.lower().replace(b" ", b"")
-            if not line.startswith(b"content-type:") or (b"text" not in line and b"application" not in line):
-                continue
+        if isinstance(self.decode, str):
+            encoding = self.decode
 
-            none, delimiter, charset = line.rpartition(b"charset=")
-            if delimiter:
-                charset = charset.split(b";")
-                if charset:
-                    encoding = to_str(charset[0])
+        elif self.decode:
+            #: detect encoding
+            for content_value in self.response_headers.get_list("Content-Type"):
+                content_type, content_params = parse_header_line(content_value)
+                if (content_type.startswith("text/") or content_type.startswith("application/")) and "charset" in content_params:
+                    encoding = content_params.get("charset", "utf-8")
+                    break
 
         try:
             # self.log.debug(f"Decoded {encoding}")
@@ -411,17 +550,17 @@ class HTTPRequest:
             decoder = codecs.getincrementaldecoder(encoding)("replace")
             response = decoder.decode(response, True)
 
-            # TODO: html_unescape as default
-
         except LookupError:
             self.log.debug(f"No Decoder found for {encoding}")
 
-        except Exception:
+        except UnicodeDecodeError:
             self.log.debug(f"Error when decoding string from {encoding}", exc_info=True)
+
+        response = html_unescape(response)
 
         return response
 
-    def write_body(self, buf):
+    def _write_body_callback(self, buf):
         """
         writes response.
         """
@@ -429,7 +568,7 @@ class HTTPRequest:
             self.exception = Abort()
             return pycurl.E_WRITE_ERROR
 
-        elif self.limit and self.rep.tell() > self.limit:
+        elif self.limit and self._body_buffer.tell() > self.limit:
             rep = self.get_response()
             with open("response.dump", mode="wb") as fp:
                 fp.write(rep)
@@ -437,28 +576,51 @@ class HTTPRequest:
             self.exception = Exception(f"Loaded URL exceeded limit ({self.limit})")
             return pycurl.E_WRITE_ERROR
 
-        self.rep.write(buf)
+        self._body_buffer.write(buf)
+
         return None  #: Everything is OK, please continue
 
-    def write_header(self, buf):
+    def _write_header_callback(self, buf):
         """
         writes header.
         """
-        self.response_header += buf
+        self._header_buffer += buf
 
-    def put_header(self, name, value):
-        self.request_headers.append(f"{name}: {value}")
+        if self._header_buffer.endswith(b"\r\n\r\n"):
+            self.response_headers.parse(self._header_buffer)
 
-    def clear_headers(self):
-        self.request_headers = []
+    def _pre_request_callback(self, conn_primary_ip, conn_local_ip, conn_primary_port, conn_local_port):
+        """
+        Called after TCP/TLS connection is established, before request is sent.
+        This runs for the initial request AND every redirect follow.
+        """
+        if not self.allow_private_ip and not is_global_address(conn_primary_ip):
+            return pycurl.PREREQFUNC_ABORT  # Aborts the entire transfer
+
+        return pycurl.PREREQFUNC_OK
+
+    def add_header(self, name, value):
+        """Append a value to a header name without replacing existing ones."""
+        self.request_headers.add(name, value)
+
+    def set_header(self, name, value):
+        """Set a header to a single value, replacing all existing values for the name."""
+        self.request_headers.set(name, value)
+
+    def remove_header(self, name, value=None):
+        self.request_headers.remove(name, value)
+
+    def clear_headers(self, use_defaults=True):
+        self.request_headers.clear(use_defaults=use_defaults)
+
 
     def close(self):
         """
         cleanup, unusable after this.
         """
-        if self.rep:
-            self.rep.close()
-            del self.rep
+        if self._body_buffer:
+            self._body_buffer.close()
+            del self._body_buffer
 
         if hasattr(self, "cj"):
             del self.cj

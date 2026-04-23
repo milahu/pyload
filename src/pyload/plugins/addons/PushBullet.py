@@ -1,6 +1,3 @@
-# -*- coding: utf-8 -*-
-
-
 import pycurl
 from pyload.core.network.request_factory import get_request
 
@@ -40,7 +37,7 @@ class PushBullet(Notifier):
 
     def send(self, event, msg, key):
         req = get_request()
-        req.c.setopt(pycurl.HTTPHEADER, ["Access-Token: {}".format(str(key))])
+        req.set_header("Access-Token", str(key))
 
         self.load(
             "https://api.pushbullet.com/v2/pushes",

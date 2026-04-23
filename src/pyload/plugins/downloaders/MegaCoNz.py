@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import base64
 import json
 import os
@@ -8,10 +6,11 @@ import re
 import struct
 
 from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 
 from pyload.core.network.http.exceptions import BadHeader
-from pyload.core.utils.convert import to_bytes
+from pyload.core.utils.convert import to_bytes, to_str
 
 from ..base.downloader import BaseDownloader
 from ..helpers import exists
@@ -46,6 +45,7 @@ from ..helpers import exists
 # ESSL                (-23): SSL verification failed
 # EGOINGOVERQUOTA     (-24): Not enough quota
 # EMFAREQUIRED        (-26): Multi-factor authentication required
+# EHASHCASHREQUIRED   (-27): HashCash challenge required
 
 
 class MegaCrypto:
@@ -58,7 +58,7 @@ class MegaCrypto:
 
     @staticmethod
     def base64_encode(data):
-        return base64.b64encode(data, b"-_")
+        return to_str(base64.b64encode(data, b"-_"), "ascii").replace("=", "")
 
     @staticmethod
     def a32_to_bytes(a):
@@ -179,6 +179,39 @@ class MegaCrypto:
         if chunk_start < size:
             yield chunk_start, size - chunk_start
 
+    @staticmethod
+    def solve_hashcash(challenge: str, easiness: int) -> str:
+        """
+        Compute proof-of-work Hashcash challenge.
+
+        :param challenge: challenge from the X-Hashcash header value from the 402 response (4th part)
+        :param easiness: easiness threshold - the lower, the harder to solve
+        :return: Base64 URL-encoded prefix that satisfies the difficulty target
+        """
+        token = MegaCrypto.base64_decode(challenge)
+        token += b"\0" * (-len(token) % 16)  # Add 0-padding to AES block size
+        if len(token) != 48:
+            raise ValueError("Invalid token value")
+
+        buffer = bytearray(b'\0' * 4 + token * 0x40000)
+        threshold = (((easiness & 63) << 1) + 1) << ((easiness >> 6) * 7 + 3)
+
+        while True:
+            # Increment the 4-byte nonce (little-endian)
+            nonce = (int.from_bytes(buffer[:4], 'little') + 1) % (1 << 32)
+            buffer[:4] = nonce.to_bytes(4, 'little')
+
+            # Compute SHA-256 hash
+            hasher = hashes.Hash(hashes.SHA256(), backend=default_backend())
+            hasher.update(buffer)
+            hash_digest = hasher.finalize()
+
+            # Check first 4 bytes as big-endian uint32
+            achieved_value = int.from_bytes(hash_digest[:4], 'big')
+            if achieved_value <= threshold:
+                # Return base64-encoded nonce
+                return MegaCrypto.base64_encode(buffer[:4])
+
     class Checksum:
         """
         interface for checking CBC-MAC checksum.
@@ -204,7 +237,7 @@ class MegaCrypto:
             encryptor = cipher.encryptor()
 
             for j in range(0, len(chunk), 16):
-                block = chunk[j : j + 16].ljust(16, b"\0")
+                block = chunk[j:j + 16].ljust(16, b"\0")
                 hash = encryptor.update(block)
 
             encryptor.finalize()
@@ -224,9 +257,7 @@ class MegaCrypto:
             Return the **printable** CBC-MAC of the message that has been authenticated
             so far.
             """
-            return "".join(
-                "{:2x}".format(ord(x)) for x in MegaCrypto.a32_to_bytes(self.digest())
-            )
+            return MegaCrypto.a32_to_bytes(self.digest()).hex()
 
         @staticmethod
         def new(key):
@@ -236,19 +267,17 @@ class MegaCrypto:
 class MegaClient:
     API_URL = "https://eu.api.mega.co.nz/cs"
 
-    def __init__(self, plugin, node_id):
+    def __init__(self, plugin, node_id, tracking_id=True):
         self.plugin = plugin
         self._ = plugin._
         self.node_id = node_id
+        self.tracking_id = random.randint(10 << 9, 10 ** 10) if tracking_id is True else tracking_id
 
     def api_request(self, **kwargs):
         """
         Dispatch a call to the api, see https://mega.co.nz/#developers.
         """
-        uid = random.randint(
-            10 << 9, 10 ** 10
-        )  #: : Generate a session id, no idea where to obtain elsewhere
-        get_params = {"id": uid}
+        get_params = {"id": self.tracking_id} if self.tracking_id else {}
 
         if self.node_id:
             get_params["n"] = self.node_id
@@ -278,6 +307,9 @@ class MegaClient:
                 self.plugin.retry(wait_time=60, reason=self._("Server busy"))
             else:
                 raise
+
+        if self.tracking_id:
+            self.tracking_id += 1  # increment on success
 
         self.plugin.log_debug("Api Response: " + res)
 
@@ -310,7 +342,7 @@ class MegaClient:
 class MegaCoNz(BaseDownloader):
     __name__ = "MegaCoNz"
     __type__ = "downloader"
-    __version__ = "0.58"
+    __version__ = "0.60"
     __status__ = "testing"
 
     __pattern__ = r"https?://(?:www\.)?mega(?:\.co)?\.nz/(?:file/(?P<ID1>[\w^_]+)#(?P<K1>[\w\-,=]+)|folder/(?P<ID2>[\w^_]+)#(?P<K2>[\w\-,=]+)/file/(?P<NID>[\w^_]+)|#!(?P<ID3>[\w^_]+)!(?P<K3>[\w\-,=]+))"
@@ -455,16 +487,44 @@ class MegaCoNz(BaseDownloader):
                 self.pyfile.name = name
                 self.skip(self._("File exists."))
 
+    def find_root_node(self, res_f):
+        """
+        Build a tree of the folder nodes. Return the handle of the top-most node.
+        """
+        tree = {}
+        for node in res_f:
+            if node['t'] == 1 and node['h'] and node['p']:
+                tree[node['h']] = node['p']
+
+        for key, val in tree.items():
+            if val not in tree:
+                return key
+
+    def build_key_dict(self, node_k):
+        """
+        Take a node's k value, and produce a dictionary.
+        """
+        dict = {}
+        node_k = node_k.split('/')
+        for key_data in node_k:
+            h = key_data[:key_data.index(':')]
+            l = key_data[key_data.index(':') + 1:]
+            dict[h] = l
+
+        return dict
+
     def process(self, pyfile):
         node_id = self.info['pattern']['NID']
         public = node_id in ("", None)
         id = self.info['pattern']['ID1'] or self.info['pattern']['ID2'] or self.info['pattern']['ID3']
         key = self.info['pattern']['K1'] or self.info['pattern']['K2'] or self.info['pattern']['K3']
 
-        self.log_debug("ID: {},".format(id),
-                       "Key: {}".format(key),
-                       "Type: {}".format('public' if public else 'node'),
-                       "Owner: {}".format(node_id))
+        self.log_debug(
+            "ID: {},".format(id),
+            "Key: {}".format(key),
+            "Type: {}".format('public' if public else 'node'),
+            "Owner: {}".format(node_id)
+        )
 
         mega = MegaClient(self, id)
 
@@ -477,9 +537,17 @@ class MegaCoNz(BaseDownloader):
             elif isinstance(res, dict) and 'e' in res:
                 mega.check_error(res['e'])
 
+            root_handle = self.find_root_node(res['f'])
+            self.log_debug("Root Folder Handle: {}".format(root_handle))
             for node in res['f']:
                 if node['t'] == 0 and ":" in node["k"] and node['h'] == node_id:
-                    master_key = MegaCrypto.decrypt_key(node['k'][node['k'].index(':') + 1:], master_key)
+                    keys = self.build_key_dict(node['k'])
+                    file_key = keys.get(root_handle)
+                    if not file_key:
+                        self.log_error(self._("Root folder handle not found in file keys"))
+                        self.fail(self._("Root folder handle not found in file keys"))
+
+                    master_key = MegaCrypto.decrypt_key(file_key, master_key)
                     break
 
             else:

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import base64
 import json
 import time
@@ -13,7 +11,7 @@ from ..base.addon import BaseAddon, threaded
 class AntiCaptcha(BaseAddon):
     __name__ = "AntiCaptcha"
     __type__ = "addon"
-    __version__ = "0.03"
+    __version__ = "0.04"
     __status__ = "testing"
 
     __config__ = [
@@ -22,6 +20,7 @@ class AntiCaptcha(BaseAddon):
         ("solve_image", "bool", "Solve image catcha", True),
         ("solve_recaptcha", "bool", "Solve ReCaptcha", True),
         ("solve_hcaptcha", "bool", "Solve HCaptcha", True),
+        ("solve_turnstile", "bool", "Solve Turnstile", True),
         ("refund", "bool", "Request refund if result incorrect", False),
         ("api_url", "str", "API base URL", "https://api.anti-captcha.com/"),
         ("passkey", "password", "API key", ""),
@@ -37,6 +36,7 @@ class AntiCaptcha(BaseAddon):
     TASK_TYPES = {
         "ReCaptcha": "RecaptchaV2TaskProxyless",
         "HCaptcha": "HCaptchaTaskProxyless",
+        "Turnstile": "TurnstileTaskProxyless"
     }
 
     # See https://anti-captcha.com/apidoc
@@ -137,8 +137,20 @@ class AntiCaptcha(BaseAddon):
                 task.error = api_data["errorDescription"]
                 self.log_error(self._("API error"), api_data["errorDescription"])
                 break
-            if api_data["status"] == "ready":
-                result = self._result_of_api_data(api_data, task)
+
+            if api_data["status"] == "processing":
+                time.sleep(5)
+            else:
+                captcha_plugin = task.captcha_params["captcha_plugin"]
+                if captcha_plugin in ("HCaptcha", "ReCaptcha"):
+                    result = api_data["solution"]["gRecaptchaResponse"]
+
+                elif captcha_plugin == "Turnstile":
+                    result = api_data["solution"]["token"]
+
+                elif task.is_textual():
+                    result = api_data["solution"]["text"]
+
                 break
             assert api_data["status"] == "processing"
             time.sleep(5)
@@ -176,6 +188,8 @@ class AntiCaptcha(BaseAddon):
                 if not self.config.get("solve_hcaptcha"):
                     self.log_debug(f"Not solving {captcha_plugin}")
                     return
+            elif captcha_plugin == "Turnstile" and not self.config.get("solve_turnstile"):
+                return
             else:
                 self.log_debug(f"Not solving {captcha_plugin}")
                 return
@@ -220,6 +234,8 @@ class AntiCaptcha(BaseAddon):
 
         if task.captcha_params["captcha_plugin"] == "ReCaptcha":
             method = "reportIncorrectRecaptcha"
+        elif task.captcha_params["captcha_plugin"] == "Hcaptcha":
+            method = "reportIncorrectHcaptcha"
         elif task.is_textual():
             method = "reportIncorrectImageCaptcha"
         else:

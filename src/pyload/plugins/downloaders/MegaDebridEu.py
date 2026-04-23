@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import json
 
 import pycurl
@@ -37,7 +36,7 @@ class MegaDebridEu(MultiDownloader):
 
     API_URL = "https://www.mega-debrid.eu/api.php"
 
-    def api_request(self, action, get={}, post={}):
+    def api_request(self, action, get=None, post=None):
         get["action"] = action
 
         # Better use pyLoad User-Agent so we don't get blocked

@@ -1,11 +1,7 @@
-# -*- coding: utf-8 -*-
-
 import json
 import re
 import time
 import urllib.parse
-
-import pycurl
 
 from pyload.core.network.http.exceptions import BadHeader
 
@@ -18,7 +14,7 @@ class TorboxApp(MultiDownloader):
     __version__ = "0.02"
     __status__ = "testing"
 
-    __pattern__ = r"https://store-\d+\.wnam\.tb-cdn\.io/dld/.*|(?P<APIURL>https://api\.torbox\.app/v1/api/(?P<ENDPOINT>webdl|torrents)/requestdl\?.*redirect=true.*)"
+    __pattern__ = r"https://store-\d+\.wnam\.tb-cdn\.io/dld/.*|(?P<APIURL>https://api\.torbox\.app/v1/api/(?P<ENDPOINT>webdl|torrents|usenet)/requestdl\?.*redirect=true.*)"
     __config__ = [
         ("enabled", "bool", "Activated", True),
         ("use_premium", "bool", "Use premium account if available", True),
@@ -35,11 +31,9 @@ class TorboxApp(MultiDownloader):
     # See https://api-docs.torbox.app/
     API_URL = "https://api.torbox.app/v1/api/"
 
-    def api_request(self, method, api_key=None, get={}, post={}):
+    def api_request(self, method, api_key=None, get=None, post=None):
         if api_key is not None:
-            self.req.http.c.setopt(
-                pycurl.HTTPHEADER, ["Authorization: Bearer " + api_key]
-            )
+            self.req.http.set_header("Authorization", f"Bearer {api_key}")
 
         try:
             json_data = self.load(self.API_URL + method, get=get, post=post)
@@ -64,10 +58,11 @@ class TorboxApp(MultiDownloader):
                 url_p = urllib.parse.urlparse(api_url)
                 parse_qs = urllib.parse.parse_qs(url_p.query)
                 endpoint = m.group("ENDPOINT")
+                id_identifier = {"webdl": "web_id", "torrents": "torrent_id", "usenet": "usenet_id"}[endpoint]
                 api_data = self.api_request(f"{endpoint}/mylist",
                                             api_key=parse_qs["token"][0],
                                             get={
-                                                "id": parse_qs["web_id" if endpoint == "webdl" else "torrent_id"][0]
+                                                "id": parse_qs[id_identifier][0]
                                             })
 
                 if api_data.get("success", False) and api_data.get("data"):
@@ -124,6 +119,7 @@ class TorboxApp(MultiDownloader):
                                                 "id": file_id,
                                                 "bypass_cache": True,
                                             })
+                self.check_errors(api_data)
 
                 file_size = api_data["data"].get("size")
                 if file_size:
@@ -148,11 +144,9 @@ class TorboxApp(MultiDownloader):
                                         "zip": False,
                                         "token": api_key
                                     })
-        if api_data.get("success", False):
-            self.link = api_data["data"]
+        self.check_errors(api_data)
 
-        else:
-            self.fail(api_data["detail"])
+        self.link = api_data["data"]
 
     def check_errors(self, data=None):
         if isinstance(data, dict):
@@ -162,7 +156,8 @@ class TorboxApp(MultiDownloader):
                     self.offline()
 
                 elif error_code == "DOWNLOAD_LIMIT_REACHED":
-                    self.retry(5, 6*60, data["detail"])
+                    self.log_error(data["detail"])
+                    self.temp_offline()
 
                 else:
                     self.log_error(data["detail"])

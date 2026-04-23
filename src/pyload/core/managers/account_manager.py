@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import os
 import shutil
 from threading import Lock
@@ -166,7 +164,7 @@ class AccountManager:
             self.accounts[name] = {}
 
     @lock
-    def update_account(self, plugin, user, password=None, options={}):
+    def update_account(self, plugin, user, password=None, options=None):
         """
         add or update an account.
         """

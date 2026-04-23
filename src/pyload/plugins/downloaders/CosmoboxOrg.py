@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import re
 
 from pyload.core.utils import parse
@@ -46,7 +44,7 @@ class CosmoboxOrg(XFSDownloader):
         self.data = self.load(
             "https://cosmobox.org/download",
             post=inputs,
-            ref=self.pyfile.url,
+            referrer=self.pyfile.url,
             redirect=False,
         )
 

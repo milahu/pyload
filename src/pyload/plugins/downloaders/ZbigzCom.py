@@ -1,12 +1,10 @@
-# -*- coding: utf-8 -*-
-
 import json
 import os
 import time
 import urllib.request
 import urllib.parse
 
-from pyload.core.utils.old import safejoin
+from pyload.core.utils.fs import safejoin
 from pyload.core.network.http.http_request import FormFile
 
 from ..base.downloader import BaseDownloader

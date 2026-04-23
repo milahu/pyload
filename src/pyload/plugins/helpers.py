@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 
 # TODO: Move to utils directory in 0.6.x
 
@@ -16,7 +15,6 @@ import time
 import traceback
 import zlib
 from base64 import b85decode, b85encode
-from datetime import timedelta
 
 from ..core.utils.convert import to_bytes, to_str
 
@@ -437,41 +435,25 @@ def replace_patterns(value, rules):
     return value
 
 
-# TODO: Remove in 0.6.x and fix exp in CookieJar.set_cookie
-def set_cookie(
-    cj, domain, name, value, path="/", exp=time.time() + timedelta(days=31).total_seconds()
-):  #: 31 days retention
-    args = [domain, name, value, path, int(exp)]
-    return cj.set_cookie(*args)
-
-
-def set_cookies(cj, cookies):
-    for cookie in cookies:
-        if not isinstance(cookie, tuple):
-            continue
-
-        if len(cookie) != 3:
-            continue
-
-        set_cookie(cj, *cookie)
-
-
 def parse_html_header(header):
     header = to_str(header, encoding="iso-8859-1")
 
     hdict = {}
-    _re = r"[ ]*(?P<key>.+?)[ ]*:[ ]*(?P<value>.+?)[ ]*\r?\n"
+    _re = r"^ *(?P<key>[!#$%&'*+-.^_`|~0-9a-zA-Z]+) *: *(?P<value>[^ ]+) *$"
 
-    for key, value in re.findall(_re, header):
-        key = key.lower()
-        if key in hdict:
-            current_value = hdict.get(key)
-            if isinstance(current_value, list):
-                current_value.append(value)
+    for header_line in header.splitlines():
+        m = re.match(_re, header_line)
+        if m is not None:
+            key = m.group("key").lower()
+            value = m.group("value")
+            if key in hdict:
+                current_value = hdict.get(key)
+                if isinstance(current_value, list):
+                    current_value.append(value)
+                else:
+                    hdict[key] = [current_value, value]
             else:
-                hdict[key] = [current_value, value]
-        else:
-            hdict[key] = value
+                hdict[key] = value
 
     return hdict
 
@@ -487,7 +469,9 @@ def parse_html_tag_attr_value(attr_name, tag):
     return m.group(2) if m else None
 
 
-def parse_html_form(attr_filter, html, input_names={}):
+def parse_html_form(attr_filter, html, input_names=None):
+    input_names = input_names or {}
+
     attr_str = "" if callable(attr_filter) else attr_filter
     for form in re.finditer(
         rf"(?P<TAG><form[^>]*{attr_str}.*?>)(?P<CONTENT>.*?)</?(form|body|html).*?>",
@@ -553,27 +537,6 @@ def renice(pid, value):
         subprocess.run(["renice", str(value), str(pid)])
     except Exception:
         pass
-
-
-def forward(source, destination, recv_timeout=None, buffering=1024):
-    """
-    Forward data from one socket to another
-    """
-    timeout = source.gettimeout()
-    source.settimeout(recv_timeout)
-    try:
-        raw_data = source.recv(buffering)
-    except socket.timeout:
-        pass
-    else:
-        while raw_data:
-            destination.sendall(raw_data)
-            try:
-                raw_data = source.recv(buffering)
-            except socket.timeout:
-                break
-
-    source.settimeout(timeout)
 
 
 def compute_checksum(filename, hashtype):
@@ -695,3 +658,17 @@ def ttl_cache(maxsize=128, typed=False, ttl=-1):
             return ttl_func(ttl_hash, *args, **kwargs)
         return functools.update_wrapper(wrapped, func)
     return wrapper
+
+
+def hexdump(data: bytes, prefix: str = ""):
+    res = ""
+    if data:
+        res += f"{prefix} [{len(data)} bytes]\n"
+        for i in range(0, len(data), 16):
+            chunk = data[i:i+16]
+            hex_part = " ".join(f"{b:02x}" for b in chunk)
+            ascii_part = "".join(chr(b) if 32 <= b <= 126 else "." for b in chunk)
+            res += f"{prefix}  {i:04x}  {hex_part:<48}  {ascii_part}\n"
+        res += "\n"
+
+    return res

@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import json
 
 import pycurl
@@ -38,9 +37,7 @@ class FshareVn(BaseAccount):
             )
 
         else:
-            self.req.http.c.setopt(
-                pycurl.HTTPHEADER, ["Content-Type: application/json"]
-            )
+            self.req.http.set_header("Content-Type", "application/json")
             json_data = self.load(
                 self.API_URL + method,
                 post=json.dumps(kwargs),

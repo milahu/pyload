@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from itertools import chain
 from threading import RLock
 
@@ -540,6 +538,35 @@ class FileManager:
 
         e = InsertEvent("pack", id, position, "collector" if not p.queue else "queue")
         self.pyload.event_manager.add_event(e)
+
+    @lock
+    @change
+    def reorder_packages(self, ids, position):
+        if len(ids) == 0:
+            return
+        if len(ids) == 1:
+            return self.reorder_package(ids[0], position)
+
+        ps = [self.get_package(id) for id in ids]
+
+        es = [RemoveEvent("pack", p.id, "collector" if not p.queue else "queue") for p in ps]
+        for e in es:
+            self.pyload.event_manager.add_event(e)
+
+        id_packageorder_list_by_queue = self.pyload.db.reorder_packages(ps, position)
+        packageorder_by_id = dict()
+        for id_packageorder_list in id_packageorder_list_by_queue:
+            for (id, packageorder) in id_packageorder_list:
+                packageorder_by_id[id] = packageorder
+        # AttributeError: 'Core' object has no attribute 'log_info'
+        # self.pyload.log_info(f"packageorder_by_id: {len(packageorder_by_id)}, self.package_cache: {len(self.package_cache)}")
+        for pack in self.package_cache.values():
+            pack.order = packageorder_by_id[pack.id]
+        self.pyload.db.commit()
+
+        es = [InsertEvent("pack", p.id, position, "collector" if not p.queue else "queue") for p in ps]
+        for e in es:
+            self.pyload.event_manager.add_event(e)
 
     @lock
     @change

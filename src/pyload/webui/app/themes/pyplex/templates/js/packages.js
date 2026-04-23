@@ -22,10 +22,12 @@ class PackageUI {
 
   parsePackages() {
     const $packageList = $("#package-list");
-    $packageList.children("li").each((_, ele) => {
-      const id = ele.id.match(/[0-9]+/);
+    const lis = $packageList.children("li");
+    for (let i = 0, len = lis.length; i < len; i++) {
+      const ele = lis[i];
+      const id = parseInt(ele.id.match(/[0-9]+/)[0]);
       this.packages.push(new Package(this, id, ele));
-    });
+    }
 
     $packageList.sortable({
       handle: ".progress",
@@ -42,10 +44,11 @@ class PackageUI {
           return false;
         }
         uiHandler.indicateLoad();
-        $.get({
+        $.post({
           url: "{{url_for('json.package_order')}}",
-          data: { pid: ui.item.data('pid'), pos: newIndex },
-          traditional: true,
+          dataType: 'json',
+          contentType: 'application/json',
+          data: JSON.stringify({ pack_id: ui.item.data('pid'), pos: newIndex }),
           success: () => {
             uiHandler.indicateFinish();
             return true;
@@ -60,10 +63,10 @@ class PackageUI {
 
   deleteFinished() {
     uiHandler.indicateLoad();
-    $.get("{{url_for('api.rpc', func='delete_finished')}}")
+    $.post("{{url_for('api.rpc', func='delete_finished')}}")
       .done((data) => {
         if (data.length > 0) {
-          window.location.reload();
+          window.location.assign(window.location.href.replace(/#.*$/, ''));
         } else {
           this.packages.forEach(pack => pack.close());
         }
@@ -76,7 +79,7 @@ class PackageUI {
 
   restartFailed() {
     uiHandler.indicateLoad();
-    $.get("{{url_for('api.rpc', func='restart_failed')}}")
+    $.post("{{url_for('api.rpc', func='restart_failed')}}")
       .done((data) => {
         if (data.length > 0) {
           this.packages.forEach(pack => pack.close());
@@ -152,7 +155,7 @@ class Package {
   }
 
   createLinks(data) {
-    const ul = $(`#sort_children_${this.id[0]}`);
+    const ul = $(`#sort_children_${this.id}`);
     ul.html("");
     data.links.forEach(link => {
       link.id = link.fid;
@@ -218,11 +221,15 @@ class Package {
   }
 
   registerLinkEvents() {
-    $(this.ele).find('.children').children('ul').children("li").each((_, child) => {
-      const lid = $(child).find('.child').attr('id').match(/[0-9]+/);
-      const imgs = $(child).find('.child_secrow span');
-      $(imgs[3]).click(() => this.deleteLink(lid));
-      $(imgs[4]).click(() => this.restartLink(lid));
+    $(this.ele).on("click", ".children ul li .child_secrow span", (e) => {
+      const $span = $(e.currentTarget);
+      const index = $span.index();
+      const lid = $span.closest("li").find(".child").attr("id").match(/[0-9]+/);
+      if (index === 3) {
+        this.deleteLink(lid);
+      } else if (index === 4) {
+        this.restartLink(lid);
+      }
     });
 
     $(this.ele).find('.children').children('ul').sortable({
@@ -240,7 +247,7 @@ class Package {
           return false;
         }
         uiHandler.indicateLoad();
-        $.get({
+        $.post({
           url: "{{url_for('json.link_order')}}",
           data: { fid: ui.item.data('lid'), pos: newIndex },
           traditional: true,
@@ -260,7 +267,7 @@ class Package {
     uiHandler.yesNoDialog("{{_('Are you sure you want to delete this link?')}}", (answer) => {
       if (answer) {
         uiHandler.indicateLoad();
-        $.get(`{{url_for('api.rpc', func='delete_files')}}/[${lid}]`)
+        $.post(`{{url_for('api.rpc', func='delete_files')}}/[${lid}]`)
           .done(() => {
             $(`#file_${lid}`).remove();
             uiHandler.indicateFinish();
@@ -273,7 +280,7 @@ class Package {
   }
 
   restartLink(lid) {
-    $.get(`{{url_for('api.rpc', func='restart_file')}}/${lid}`)
+    $.post(`{{url_for('api.rpc', func='restart_file')}}/${lid}`)
       .done(() => {
         const ele1 = $(`#file_${lid}`);
         const imgs1 = $(ele1).find(".glyphicon");
@@ -311,7 +318,7 @@ class Package {
     uiHandler.yesNoDialog("{{_('Are you sure you want to delete this package?')}}", (answer) => {
       if (answer) {
         uiHandler.indicateLoad();
-        $.get(`{{url_for('api.rpc', func='delete_packages')}}/[${this.id}]`)
+        $.post(`{{url_for('api.rpc', func='delete_packages')}}/[${this.id}]`)
           .done(() => {
             $(this.ele).remove();
             uiHandler.indicateFinish();
@@ -327,7 +334,7 @@ class Package {
     event.stopPropagation();
     event.preventDefault();
     uiHandler.indicateLoad();
-    $.get(`{{url_for('api.rpc', func='restart_package')}}/${this.id}`)
+    $.post(`{{url_for('api.rpc', func='restart_package')}}/${this.id}`)
       .done(() => {
         this.close();
         uiHandler.indicateSuccess();
@@ -341,7 +348,7 @@ class Package {
     event.stopPropagation();
     event.preventDefault();
     uiHandler.indicateLoad();
-    $.get(`{{url_for('api.rpc', func='service_call')}}/'ExtractArchive.extract_package', [${this.id}]`)
+    $.post(`{{url_for('api.rpc', func='service_call')}}/'ExtractArchive.extract_package', [${this.id}]`)
       .done(() => {
         this.close();
         uiHandler.indicateSuccess();
@@ -368,10 +375,14 @@ class Package {
     event.stopPropagation();
     event.preventDefault();
     uiHandler.indicateLoad();
-    $.get({
+    $.post({
       url: "{{url_for('json.move_package')}}",
-      data: { id: this.id, dest: ((this.ui.type + 1) % 2) },
-      traditional: true
+      dataType: 'json',
+      contentType: 'application/json',
+      data: JSON.stringify({
+        pack_id: this.id,
+        dest: ((this.ui.type + 1) % 2)
+      }),
     })
       .done(() => {
         $(this.ele).remove();
@@ -394,10 +405,14 @@ class Package {
       .done((data) => {
         const length = data.links.length;
         for (let i = 1; i <= length / 2; i++) {
-          $.get({
+          $.post({
             url: "{{url_for('json.link_order')}}",
-            data: { fid: data.links[length - i].fid, pos: i - 1 },
-            traditional: true
+            dataType: 'json',
+            contentType: 'application/json',
+            data: JSON.stringify({
+              file_id: data.links[length - i].fid,
+              pos: i - 1
+            }),
           }).fail(() => {
             uiHandler.indicateFail();
           });
@@ -415,24 +430,24 @@ class Package {
     event.preventDefault();
     $("#pack_form").off("submit").submit((e) => this.savePackage(e));
 
-    $("#pack_id").val(this.id[0]);
+    $("#pack_id").val(this.id);
     $("#pack_name").val(this.name.text());
     $("#pack_folder").val(this.folder.text());
-    $("#pack_pws").val(this.password.text());
+    $("#pack_pwd").val(this.password.text());
     $('#pack_box').modal('show');
   }
 
   savePackage(event) {
-    $.ajax({
+    $.post({
       url: "{{url_for('json.edit_package')}}",
-      type: 'post',
       dataType: 'json',
-      data: $('#pack_form').serialize()
+      contentType: 'application/json',
+      data: JSON.stringify(formToObject('#pack_form'))
     });
     event.preventDefault();
     this.name.text($("#pack_name").val());
     this.folder.text($("#pack_folder").val());
-    this.password.text($("#pack_pws").val());
+    this.password.text($("#pack_pwd").val());
     $('#pack_box').modal('hide');
   }
 }

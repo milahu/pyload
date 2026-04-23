@@ -1,19 +1,17 @@
-# -*- coding: utf-8 -*-
-
 import re
 
-import pycurl
 from pyload.core.utils.misc import eval_js
 
 from ..anticaptchas.HCaptcha import HCaptcha
 from ..anticaptchas.ReCaptcha import ReCaptcha
+from ..anticaptchas.Turnstile import Turnstile
 from ..base.simple_downloader import SimpleDownloader
 
 
 class TurbobitNet(SimpleDownloader):
     __name__ = "TurbobitNet"
     __type__ = "downloader"
-    __version__ = "0.56"
+    __version__ = "0.57"
     __status__ = "testing"
 
     __pattern__ = r"https?://(?:(?:www|m)\.)?(?:(?:trbbt|turbo(?:beet|bit[ea]?)|torbobit)\.net|(?:tourbobit|turbobi(?:tn?|f))\.com|turbo?\.(?:to|cc)|turb\.pw|trbt\.cc)/(?:download/free/)?(?P<ID>\w+)"
@@ -70,14 +68,14 @@ class TurbobitNet(SimpleDownloader):
         wait_time = eval_js(m.group(1))
         self.wait(wait_time)
 
-        self.req.http.c.setopt(pycurl.HTTPHEADER, ["X-Requested-With: XMLHttpRequest"])
+        self.req.http.set_header("X-Requested-With", "XMLHttpRequest")
         self.data = self.load(
             "https://turbobit.net/download/getLinkTimeout/{}".format(
                 self.info["pattern"]["ID"]
             ),
-            ref=self.free_url,
+            referrer=self.free_url,
         )
-        self.req.http.c.setopt(pycurl.HTTPHEADER, ["X-Requested-With:"])
+        self.req.http.remove_header("X-Requested-With")
 
         if "/download/started/" in self.data:
             self.data = self.load(
@@ -111,8 +109,15 @@ class TurbobitNet(SimpleDownloader):
                     response = hcaptcha.challenge(captcha_key)
                     inputs["g-recaptcha-response"] = inputs["h-captcha-response"] = response
 
+                else:
+                    turnstile = Turnstile(self.pyfile)
+                    captcha_key= turnstile.detect_key()
+                    if captcha_key:
+                        response = turnstile.challenge(captcha_key)
+                        inputs["cf-turnstile-response"] = response
+
             if captcha_key:
-                self.data = self.load(self.free_url, post=inputs, ref=self.free_url)
+                self.data = self.load(self.free_url, post=inputs, referrer=self.free_url)
 
             else:
                 self.fail(self._("Could not detect captcha type"))

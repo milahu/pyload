@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 #       ____________
 #   ___/       |    \_____________ _                 _ ___
 #  /        ___/    |    _ __ _  _| |   ___  __ _ __| |   \
@@ -10,8 +9,10 @@
 
 import atexit
 import gettext
+import json
 import locale
 import os
+import pathlib
 import signal
 import subprocess
 import sys
@@ -81,7 +82,7 @@ class Core:
         return self._debug
 
     # NOTE: should `reset` restore the user config as well?
-    def __init__(self, userdir, tempdir, storagedir, debug=None, reset=False, dry=False, host=None, port=None):
+    def __init__(self, userdir, tempdir, storagedir, debug=None, reset=False, dry=False, api_spec=False, host=None, port=None):
         # print("host port", host, port); raise 123
         self._running = Event()
         self._exiting = False
@@ -90,6 +91,7 @@ class Core:
         self._ = lambda x: x
         self._debug = 0
         self._dry_run = dry
+        self._api_spec = api_spec
 
         self._init_log_before_config()
         # self.log.debug("testing self.log")
@@ -125,7 +127,7 @@ class Core:
         from .config.parser import ConfigParser
 
         self.userdir = os.path.realpath(userdir)
-        self.tempdir = os.path.realpath(tempdir)
+        tempfile.tempdir = self.tempdir = os.path.realpath(tempdir)
         os.makedirs(self.userdir, exist_ok=True)
         os.makedirs(self.tempdir, exist_ok=True)
 
@@ -194,8 +196,10 @@ class Core:
             pyload_config_path = f"{self.userdir}/settings/pyload.cfg"
             raise Exception(f"failed to create all storagedir candidates. hint: set storage_folder in {pyload_config_path!r}")
 
-        if not self._dry_run:
-            self.config.save()  #: save so config files gets filled
+        if self._dry_run or self._api_spec:
+            return
+
+        self.config.save()  #: save so config files gets filled
 
     def _init_log_before_config(self):
         # the attribute self.config does not-yet exist
@@ -231,6 +235,7 @@ class Core:
         from .network import request_factory
         from .network.request_factory import RequestFactory
 
+        r'''
         ca_bundle_dir = self.userdir + "/cache/ca-bundle"
         os.makedirs(ca_bundle_dir, exist_ok=True)
         ca_bundle_files = sorted(glob.glob(ca_bundle_dir + "/*.crt"))
@@ -299,6 +304,7 @@ class Core:
                 self.log.warning(
                     f"failed to load trusted root cert from {cert_file}: {exc}"
                 )
+        '''
 
         self.req = self.request_factory = RequestFactory(self)
 
@@ -582,6 +588,25 @@ class Core:
         rv.extend(args)
         return rv
 
+    def _generate_open_api_spec(self):
+        from pyload.webui.app.api_docs.openapi_specification_generator import OpenAPISpecificationGenerator
+
+        self.log.debug("Generating OpenAPI spec")
+        openapi_spec = OpenAPISpecificationGenerator(api=self.api).generate_openapi_json()
+        self.log.debug("OpenAPI spec has been generated")
+
+        last_index = __file__.rfind("src"+ os.sep + "pyload")
+        if last_index != -1:
+            spec_path = pathlib.Path(f"{__file__[:last_index]}/openapi-generator/openapi.json")
+            if spec_path.exists():
+                self.log.debug(f"Saving OpenAPI spec to: {spec_path}")
+                with open(spec_path, 'w') as f:
+                    json.dump(openapi_spec, f, indent=2)
+            else:
+                raise IOError("Unable to locate openapi.json file")
+        else:
+            raise IOError("Unable to locate pyLoad's project directory")
+
     def start(self):
         try:
             try:
@@ -632,6 +657,10 @@ class Core:
             # self.evm.fire('pyload:started')
 
             self.thm.pause = False  # NOTE: Recheck...
+
+            if self._api_spec:
+                self._generate_open_api_spec()
+                raise Exit
 
             if self._dry_run:
                 raise Exit

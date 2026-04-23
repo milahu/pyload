@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import http.client
 
 PROPRIETARY_RESPONSES = {
@@ -20,10 +18,10 @@ PROPRIETARY_RESPONSES = {
 
 
 class BadHeader(Exception):
-    def __init__(self, code, header="", content=""):
+    def __init__(self, code, headers, content=""):
         code = int(code)
         response = http.client.responses.get(code, PROPRIETARY_RESPONSES.get(code, "unknown error code"))
         super().__init__(f"Bad server response: {code} {response}")
         self.code = code
-        self.header = header
+        self.headers = headers
         self.content = content

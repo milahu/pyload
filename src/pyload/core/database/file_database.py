@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 from ..datatypes.pyfile import PyFile
 from ..datatypes.pypackage import PyPackage
 from ..utils import format
@@ -294,6 +292,57 @@ class FileDatabaseMethods:
         )
 
     @style.queue
+    def reorder_packages(self, ps, position, no_move=False):
+        id_packageorder_list_by_queue = [
+            [], # collector
+            [], # queue
+        ]
+        for queue in (0, 1): # collector, queue
+            id_packageorder_list = id_packageorder_list_by_queue[queue]
+            _ps = [p for p in ps if p.queue == queue]
+            if not _ps:
+                continue
+            if position == -1: # move to end
+                position = self._next_package_order(queue)
+            self.c.execute("BEGIN IMMEDIATE") # start transaction
+            try:
+                if not no_move:
+                    self.c.execute(
+                        "SELECT id FROM packages WHERE queue=? ORDER BY packageorder ASC",
+                        (queue,)
+                    )
+                    all_ids = [row[0] for row in self.c.fetchall()]
+                    ids_to_move = [p.id for p in _ps]
+                    remaining = [pid for pid in all_ids if pid not in ids_to_move]
+                    if position < 0:
+                        position = 0
+                    if position > len(remaining):
+                        position = len(remaining)
+                    new_order = remaining[:position] + ids_to_move + remaining[position:]
+                    updates = [(i, pid) for i, pid in enumerate(new_order)]
+                    self.c.executemany(
+                        "UPDATE packages SET packageorder=? WHERE id=?",
+                        updates
+                    )
+                    for (order, pid) in updates:
+                        id_packageorder_list.append((pid, order))
+                else:
+                    # only update positions of moved packages
+                    ids_to_move = [p.id for p in _ps]
+                    updates = [(position + i, pid) for i, pid in enumerate(ids_to_move)]
+                    self.c.executemany(
+                        "UPDATE packages SET packageorder=? WHERE id=?",
+                        updates
+                    )
+                    for (order, pid) in updates:
+                        id_packageorder_list.append((pid, order))
+                self.c.execute("COMMIT") # commit transaction
+            except Exception:
+                self.c.execute("ROLLBACK") # rollback transaction
+                raise
+        return id_packageorder_list_by_queue
+
+    @style.queue
     def reorder_link(self, f, position):
         """
         reorder link with f as dict for pyfile.
@@ -421,6 +470,8 @@ class FileDatabaseMethods:
         if link_ids:
             query += " AND id IN (" + ",".join(["?"] * len(link_ids)) + ")"
         args = link_ids
+        # print(f"restart_failed: query: {query}")
+        self.pyload.log.debug(f"restart_failed: query: {query}")
         self.c.execute(query, args)
 
     @style.queue
