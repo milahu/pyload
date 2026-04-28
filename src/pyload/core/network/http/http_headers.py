@@ -1,6 +1,6 @@
 import re
 from collections import UserDict
-from typing import Dict, Iterator, List, Optional, Union
+from typing import Dict, Iterator, List, Optional, Union, Mapping
 
 from ...utils.convert import to_bytes, to_str
 
@@ -13,6 +13,7 @@ class HttpHeaders(UserDict):
     - Header names are case-insensitive; original casing is preserved for output.
     - Multiple values per header are preserved in insertion order (last one wins for get/indexing).
     - Values are stored as stripped strings.
+    - Supports both mutable operations (set, add, remove) and immutable-friendly patterns.
     """
 
     def __init__(self):
@@ -39,7 +40,7 @@ class HttpHeaders(UserDict):
             for name, value in defaults:
                 self.add(name, value)
 
-    def add(self, name: str, value: str) -> None:
+    def add(self, name: str, value: Union[str, int]) -> None:
         """Append a value to a header name without replacing existing ones.
 
         Parameters:
@@ -50,7 +51,7 @@ class HttpHeaders(UserDict):
         if key not in self.data:
             self.data[key] = []
             self._original_case[key] = name
-        self.data[key].append(value.strip())
+        self.data[key].append(value.strip() if isinstance(value, str) else value)
 
     def remove(self, name: str, value: Optional[str] = None) -> bool:
         """Remove header(s).
@@ -181,3 +182,52 @@ class HttpHeaders(UserDict):
     def __bytes__(self) -> bytes:
         """Alias for to_wire(); returns the serialized header block as bytes."""
         return self.to_wire()
+
+    def copy(self) -> "HttpHeaders":
+        """Return a shallow copy of this header collection."""
+        new_headers = HttpHeaders()
+        new_headers.data = {k: list(v) for k, v in self.data.items()}
+        new_headers._original_case = dict(self._original_case)
+        return new_headers
+
+    def with_set(self, name: str, value: Union[str, int]) -> "HttpHeaders":
+        """
+        Return a new HttpHeaders with the given header set (immutable-friendly pattern).
+
+        This does not modify the current instance.
+        """
+        new_headers = self.copy()
+        new_headers.set(name, value)
+        return new_headers
+
+    def with_set_many(self, headers: Mapping[str, Union[str,int]]) -> "HttpHeaders":
+        """
+        Return a new HttpHeaders with the provided headers set (immutable-friendly pattern).
+
+        This does not modify the current instance.
+        """
+        new_headers = self.copy()
+        for key, value in headers.items():
+            new_headers.set(key, value)
+        return new_headers
+
+    def with_added(self, name: str, value: Union[str, int]) -> "HttpHeaders":
+        """
+        Return a new HttpHeaders with the given header added (immutable-friendly pattern).
+
+        This does not modify the current instance.
+        """
+        new_headers = self.copy()
+        new_headers.add(name, value)
+        return new_headers
+
+    def with_added_many(self, headers: Mapping[str, Union[str,int]]) -> "HttpHeaders":
+        """
+        Return a new HttpHeaders with the provided headers added (immutable-friendly pattern).
+
+        This does not modify the current instance.
+        """
+        new_headers = self.copy()
+        for key, value in headers.items():
+            new_headers.add(key, value)
+        return new_headers

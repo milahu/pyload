@@ -232,8 +232,7 @@ class BasePlugin:
         http_req = self.req.http if hasattr(self.req, "http") else self.req
 
         # TODO: Move to network in 0.6.x
-        header = http_req.response_headers.copy()
-        header.update({"code": req.code, "url": req.last_effective_url})
+        header = http_req.response_headers.with_set_many({"code": req.code, "url": req.last_effective_url})
 
         self.last_header = header
 

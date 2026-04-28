@@ -39,6 +39,7 @@ def local_check(func):
                 if is_loopback_request(check_source=False):
                     return func(*args, **kwargs)
 
+        flask.current_app.logger.error("Refusing Connection")
         return "Forbidden", 403
 
     return wrapper
@@ -202,7 +203,7 @@ def flashgot():
         "http://localhost:9666/flashgot",
         "http://127.0.0.1:9666/flashgot",
     ):
-        flask.abort(500)
+        flask.abort(403)
 
     package = flask.request.form.get("package")
     urls = [url for url in flask.request.form["urls"].split("\n") if url.strip()]

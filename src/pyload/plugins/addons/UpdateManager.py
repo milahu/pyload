@@ -6,6 +6,7 @@ import time
 from datetime import timedelta
 
 from pyload import PKGDIR
+from pyload.core.utils.fs import safejoin
 
 from ..base.addon import BaseAddon, expose, threaded
 from ..helpers import exists
@@ -409,7 +410,7 @@ class UpdateManager(BaseAddon):
             rootplugins = os.path.join(PKGDIR, "plugins")
 
             for basedir in (userplugins, rootplugins):
-                py_filename = os.path.join(basedir, plugin_type, plugin_name + ".py")
+                py_filename = safejoin(basedir, plugin_type, plugin_name + ".py")
                 pyc_filename = py_filename + "c"
 
                 if plugin_type == "addon":

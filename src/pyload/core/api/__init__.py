@@ -236,10 +236,15 @@ class Api:
         is_admin = user_info.get("role") == Role.ADMIN
 
         ADMIN_ONLY_CORE_OPTIONS = {
+            ("general", "ssl_verify"),
             ("general", "storage_folder"),
             ("log", "syslog_host"),
             ("log", "syslog_port"),
+            ("proxy", "enabled"),
+            ("proxy", "host"),
             ("proxy", "password"),
+            ("proxy", "socks_resolve_dns"),
+            ("proxy", "type"),
             ("proxy", "username"),
             ("reconnect", "script"),
             ("webui", "host"),
@@ -571,17 +576,8 @@ class Api:
         else:
             folder = ""
 
-        folder = (
-            folder.replace("http://", "")
-            .replace("https://", "")
-            .replace("../", "_")
-            .replace("..\\", "_")
-            .replace(":", "")
-            .replace("/", "_")
-            .replace("\\", "_")
-            .replace("\r", "_")
-            .replace("\n", "_")
-        )
+        folder = folder.replace("http://", "").replace("https://", "")
+        folder = secure_filename(folder)
 
         sanitized_name = name.replace("\n", "\\n").replace("\r", "\\r")
         package_id = self.pyload.files.add_package(sanitized_name, folder, Destination(dest))
@@ -1270,6 +1266,8 @@ class Api:
         for key, value in data.items():
             if key == "id":
                 continue
+            elif key == "_folder":
+                value = secure_filename(value)
             setattr(p, key, value)
 
         p.sync()

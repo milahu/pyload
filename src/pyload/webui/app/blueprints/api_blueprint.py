@@ -78,7 +78,7 @@ def rpc(func, args=""):
                 **{x: _parse_parameter(y) for x, y in kwargs.items()},
             ))
     except Exception as exc:
-        api.pyload.log.error(f"API error in '{func}'",
+        flask.current_app.logger.error(f"API error in '{func}'",
             exc_info=api.pyload.debug > 1,
             stack_info=api.pyload.debug > 2
         )
