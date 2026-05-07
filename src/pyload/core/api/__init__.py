@@ -992,8 +992,8 @@ class Api:
         :return: list of `PackageInfo`
         """
         return (
-            [{**p, "queue": True} for p in self.get_queue()] +
-            [{**p, "queue": False} for p in self.get_collector()]
+            [{**(p.__dict__), "queue": True} for p in self.get_queue()] +
+            [{**(p.__dict__), "queue": False} for p in self.get_collector()]
         )
 
     @legacy("getCollector")
