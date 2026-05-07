@@ -983,6 +983,8 @@ class Api:
             for pack in self.pyload.files.get_complete_data(Destination.QUEUE).values()
         ]
 
+    @permission(Perms.LIST)
+    @get
     def get_queue_and_collector(self):
         """
         get queue and collector in one call.
