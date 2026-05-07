@@ -73,10 +73,14 @@ def rpc(func, args=""):
                 **{name: file.read()}
             ))
         else:
-            response = jsonify(getattr(api, func)(
-                *[_parse_parameter(x) for x in args],
-                **{x: _parse_parameter(y) for x, y in kwargs.items()},
-            ))
+            args = [_parse_parameter(x) for x in args]
+            kwargs = {x: _parse_parameter(y) for x, y in kwargs.items()}
+            # remove csrf_token from kwargs
+            # csrf_token is used as session ID
+            if "csrf_token" in kwargs:
+                kwargs.pop("csrf_token")
+            get_response = getattr(api, func)
+            response = jsonify(get_response(*args, **kwargs))
     except Exception as exc:
         flask.current_app.logger.error(f"API error in '{func}'",
             exc_info=api.pyload.debug > 1,
