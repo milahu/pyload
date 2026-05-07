@@ -72,7 +72,7 @@ pkgs.mkShell {
     pyopenssl
     timeout-decorator
 
-    nur.repos.milahu.python3.pkgs.py-mini-racer
+    nur.repos.milahu.python3.pkgs.mini-racer
 
     wtforms
 
