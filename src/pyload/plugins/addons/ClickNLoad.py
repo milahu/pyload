@@ -9,7 +9,7 @@ from pyload.core.utils.struct.lock import lock
 from pyload.core.utils.web.convert import host_to_ip
 
 from ..base.addon import BaseAddon, threaded
-from ..helpers import forward, str_exc
+from ..helpers import str_exc
 
 
 # note: disabled by default
