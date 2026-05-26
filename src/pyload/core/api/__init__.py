@@ -212,6 +212,52 @@ class Api:
             value = self.pyload.config.get_plugin(category, option)
         return value
 
+    @legacy("setConfigValues")
+    @permission(Perms.SETTINGS)
+    @post
+    def set_config_values(self, config: dict) -> None:
+        """
+        Set multiple config values.
+
+        :param config: config[section][category][option] = value
+        """
+        # self.pyload.log.debug(f"set_config_values: config={config}")
+        # error_name = "TypeError"
+        error_name = "ValueError"
+        errors = dict()
+        if not isinstance(config, dict):
+            errors["config"] = f"{error_name}: must be dict, is {type(section_dict).__name__}"
+            return {"ok": False, "errors": errors}
+        # set as many config values as possible
+        for section, section_dict in config.items():
+            if not isinstance(section_dict, dict):
+                errors[f"config.{section}"] = f"{error_name}: must be dict, is {type(section_dict).__name__}"
+                continue
+            for category, category_dict in section_dict.items():
+                if not isinstance(category_dict, dict):
+                    errors[f"config.{section}.{category}"] = f"{error_name}: must be dict, is {type(category_dict).__name__}"
+                    continue
+                for option, value in category_dict.items():
+                    if not isinstance(value, (str, bool, int, float)):
+                        errors[f"config.{section}.{category}.{option}"] = f"{error_name}: must be scalar, is {type(value).__name__}"
+                        continue
+                    # set value
+                    result = None
+                    try:
+                        result = self.set_config_value(category, option, value, section)
+                    except Exception as exc:
+                        errors[f"config.{section}.{category}.{option}"] = f"{type(exc).__name__}: {exc}"
+                    # self.pyload.log.debug(f"set_config_values: set_config_value -> {result!r}")
+                    if not result is None:
+                        # TODO is this reachable?
+                        # or does set_config_value always throw on error?
+                        errors[f"config.{section}.{category}.{option}"] = f"{type(result).__name__}: {result}"
+        # test
+        # errors["config.some_section.some_category.some_option"] = "SomeError: Some message"
+        if errors:
+            return {"ok": False, "errors": errors}
+        return {"ok": True}
+
     @legacy("setConfigValue")
     @permission(Perms.SETTINGS)
     @post
