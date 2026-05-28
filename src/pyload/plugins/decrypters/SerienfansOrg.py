@@ -120,6 +120,9 @@ class SerienfansOrg(BaseDecrypter):
 
         self.pyfile = pyfile
 
+        # result
+        self.packages = []
+
         # self.log_debug(f"pyfile.status: {pyfile.status}")
         # raise 123
 
@@ -352,8 +355,6 @@ class SerienfansOrg(BaseDecrypter):
         if response_2_html == html_not_found:
             self.log_error("empty result")
             return
-
-        self.packages = []
 
         movie_soup = BeautifulSoup(response_2_html, "html.parser")
 
