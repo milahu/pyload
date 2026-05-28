@@ -1,5 +1,8 @@
 #!/bin/sh
 
+# undo merge:
+# git rebase -i --rebase-merges origin/develop^
+
 set -eux
 
 # git checkout develop
