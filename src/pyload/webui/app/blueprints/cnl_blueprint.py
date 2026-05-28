@@ -2,6 +2,7 @@ import os
 from base64 import standard_b64decode
 from functools import wraps
 from urllib.parse import unquote
+import re
 
 import flask
 from cryptography.hazmat.backends import default_backend
@@ -127,11 +128,13 @@ def addcrypted():
         return "success\r\n"
 
 
-@bp.route("/flash/addcrypted2", methods=["POST"], endpoint="addcrypted2")
-@config_check(["ClickNLoad", "enabled", "plugin"], "Click'N'Load is disabled")
-@local_check
-@csrf_exempt
-def addcrypted2():
+# TODO move to src/pyload/plugins/decrypters/ClickNLoad.py
+def clicknload_decrypt2(crypted: str, jk: str) -> list[str]:
+    """
+    Click'N'Load decrypter
+    for the API endpoint
+    POST /flash/addcrypted2
+    """
     def decrypt(crypted: bytes, key: bytes, IV: bytes) -> str:
         cipher = Cipher(
             algorithms.AES(key), modes.CBC(IV), backend=default_backend()
@@ -148,25 +151,24 @@ def addcrypted2():
         decrypted = decrypted.replace(b"\x00", b"")
         return to_str(decrypted).strip()
 
-    package = flask.request.form.get(
-        "package", flask.request.form.get("source", flask.request.form.get("referer"))
-    )
-    crypted = flask.request.form["crypted"]
-    jk = flask.request.form["jk"]
-    pack_password = flask.request.form.get("passwords")
-
     crypted = standard_b64decode(unquote(crypted.replace(" ", "+")))
     if len(crypted) % 16 != 0:
-        return "Encrypted data length must be multiple of 16 bytes", 500
+        raise ValueError("Encrypted data length must be multiple of 16 bytes")
 
     try:
-        jk = eval_js(f"{jk} f()")
+        if len(jk) == 32 and re.fullmatch(r"[0-9a-fA-F]+", jk):
+            # jk == key.hex()
+            # eval_js would be trivial:
+            # jk = f"function f() {{ return '{jk}';}}"
+            pass
+        else:
+            jk = eval_js(f"{jk} f()")
         key = bytes.fromhex(jk)
     except ValueError:
-        return "Could not decrypt key", 500
+        raise ValueError("Could not decrypt key")
 
     if len(key) != 16:
-        return "Key must be 16 bytes", 500
+        raise ValueError("Key must be 16 bytes")
 
     try:
         decrypted_urls = decrypt(crypted, key, key)
@@ -174,9 +176,32 @@ def addcrypted2():
         try:
             decrypted_urls = decrypt(crypted[16:], key, crypted[:16])
         except UnicodeDecodeError:
-            return "Decrypted output is invalid UTF-8", 500
+            raise ValueError("Decrypted output is invalid UTF-8")
 
-    urls = [url for url in decrypted_urls.splitlines()]
+    # NOTE splitlines handles all line endings: "\n", "\r", "\r\n"
+    urls = decrypted_urls.splitlines()
+
+    return urls
+
+
+@bp.route("/flash/addcrypted2", methods=["POST"], endpoint="addcrypted2")
+@config_check(["ClickNLoad", "enabled", "plugin"], "Click'N'Load is disabled")
+@local_check
+@csrf_exempt
+def addcrypted2():
+    package = flask.request.form.get(
+        "package", flask.request.form.get("source", flask.request.form.get("referer"))
+    )
+    crypted = flask.request.form["crypted"]
+    jk = flask.request.form["jk"]
+    pack_password = flask.request.form.get("passwords")
+
+    try:
+        urls = clicknload_decrypt2(crypted, jk)
+    except Exception as exc:
+        # internal server error
+        return str(exc), 500
+        # return f"{type(exc).__name__}: {exc}", 500
 
     api = flask.current_app.config["PYLOAD_API"]
     try:
