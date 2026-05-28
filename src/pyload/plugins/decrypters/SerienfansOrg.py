@@ -209,6 +209,11 @@ class SerienfansOrg(BaseDecrypter):
             self.max_video_quality = q[0]
             self.log_info(f"quality: {self.prefer_video_quality}")
 
+        # hoster
+        if h := self.pyfile_fragment.get("h"):
+            self.prefer_hoster = h[0]
+            self.log_info(f"hoster: {self.prefer_hoster}")
+
         # season
         if s := self.pyfile_fragment.get("s"):
             self.season_num_list = list(map(int, re.findall("[0-9]+", " ".join(s))))
