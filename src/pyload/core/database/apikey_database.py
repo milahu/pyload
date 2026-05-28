@@ -1,10 +1,8 @@
 import hmac  # Only imported for its secure string comparison function
 import time
-from typing import Union
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives import hashes
-from wtforms.validators import Optional
 
 from ..utils.struct.style import style
 

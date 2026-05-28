@@ -753,7 +753,7 @@ class Core:
             # self.evm.fire('pyload:stopping')
 
             for thread in self.thread_manager.threads:
-                thread.put("quit")
+                thread.stop()
 
             # kill all threads
             self._stop_hotreload_code()

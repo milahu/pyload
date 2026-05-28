@@ -12,6 +12,7 @@ import re
 import secrets
 import time
 from enum import IntFlag
+from threading import RLock
 import stat
 from typing import Any, Callable, Optional
 from urllib.parse import urlparse
@@ -111,13 +112,13 @@ def has_permission(user_perms: Perms, required_perms: Perms):
 
 class Api:
     """
-    **pyLoads API**
+    **pyLoad's API**
 
     This is accessible either internal via core.api.
 
     see openapi.json for information about data structures and what methods are usable with rpc.
 
-    Most methods requires specific permissions, please look at the source code if you need to know.\
+    Most methods requires specific permissions, please look at the source code if you need to know.
     These can be configured via webinterface.
     Admin user have all permissions, and are the only ones who can access the methods with no specific permission.
     """
@@ -148,6 +149,10 @@ class Api:
     def __init__(self, core):
         self.pyload = core
         self._ = core._
+
+        # API key cache
+        self._apikey_cache = {}  # Format: {key_id: (timestamp, data)}
+        self._apikey_cache_lock = RLock()
 
     def _required_http_method_for_api(self, func_name: str) -> Optional[str]:
         """
@@ -308,12 +313,8 @@ class Api:
         if section == "core":
             if category == "general" and option == "storage_folder":
                 # Forbid setting the download folder inside dangerous locations
-                correct_case = lambda x: x.lower() if os.name == "nt" else x
-                directories = [
-                    correct_case(os.path.join(os.path.realpath(d), ""))
-                    for d in [value, PKGDIR, self.pyload.userdir]
-                ]
-                if any(directories[0].startswith(d) for d in directories[1:]):
+                blocked_dirs = [PKGDIR, self.pyload.userdir]
+                if any(fs.is_within_directory(d, value) for d in blocked_dirs):
                     return
 
             # Require ADMIN role for security-critical settings
@@ -1791,6 +1792,17 @@ class Api:
         """
         deletes a user login.
         """
+        user_id = self.pyload.db.get_user_id(user)
+        if user_id:
+            with self._apikey_cache_lock:
+                # Remove all cache entries where the cached_data has matching user_id
+                keys_to_delete = [
+                    key_id for key_id, (_, data) in self._apikey_cache.items()
+                    if data.get("user_id") == user_id
+                ]
+                for key_id in keys_to_delete:
+                    del self._apikey_cache[key_id]
+
         return self.pyload.db.remove_user(user)
 
     @legacy("changePassword")
@@ -1883,14 +1895,20 @@ class Api:
                 "error": "Invalid username",
             }
         else:
+            result = self.pyload.db.delete_user_apikey(user_id, key_id)
+            if result:
+                with self._apikey_cache_lock:
+                    self._apikey_cache.pop(key_id, None)  # remove from cache
+
             return {
-                "success": self.pyload.db.delete_user_apikey(user_id, key_id),
+                "success": result,
             }
 
-    def check_apikey(self, apikey: str) -> dict[str, Any]:
+    def check_apikey(self, apikey: str, ttl: int = 5 * 60) -> dict[str, Any]:
         """
-        Validates an API key.
+        Validates an API key with caching for improved performance.
         :param apikey: API key to validate
+        :param ttl: API key cache TTL in seconds (0 = no cache)
         :return: dict with `data` as the API key info
         """
         if (
@@ -1905,15 +1923,50 @@ class Api:
             }
 
         key_id = int(apikey[4:4 + int(apikey[3])])
+
+        now = int(time.time() * 1000)
+
+        # Check cache first (skip if ttl is 0)
+        if ttl > 0:
+            with self._apikey_cache_lock:
+                if key_id in self._apikey_cache:
+                    cache_time, cached_data = self._apikey_cache[key_id]
+                    if now - cache_time < ttl * 1000:
+                        # Cache hit - verify expiration in case key expired during cache window
+                        expires_at = cached_data["expires_at"]
+                        if 0 < expires_at <= now:
+                            # Key expired, remove from cache and fail
+                            del self._apikey_cache[key_id]
+                            return {
+                                "success": False,
+                                "error": "API key has expired",
+                            }
+
+                        else:
+                            # Cache hit - return cached data
+                            return {
+                                "success": True,
+                                "data": cached_data,
+                            }
+                    else:
+                        # Cache expired - remove it
+                        del self._apikey_cache[key_id]
+
+        # Cache miss - query database
         key_data = self.pyload.db.check_apikey(key_id, apikey[-43:])
         if not key_data:
             return {
                 "success": False,
                 "error": "Invalid or expired API key",
             }
-        else:
-            self.pyload.db.update_apikey_last_used(key_id)
-            return {
-                "success": True,
-                "data": key_data,
-            }
+
+        # Cache the successful validation result (only if ttl > 0)
+        if ttl > 0:
+            with self._apikey_cache_lock:
+                self._apikey_cache[key_id] = (now, key_data)
+
+        self.pyload.db.update_apikey_last_used(key_id)
+        return {
+            "success": True,
+            "data": key_data,
+        }

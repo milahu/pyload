@@ -1,6 +1,6 @@
 import os
 import shutil
-from threading import Lock
+from threading import RLock
 
 from ..utils.struct.lock import lock
 from .event_manager import AccountUpdateEvent
@@ -21,7 +21,7 @@ class AccountManager:
         """
         self.pyload = core
         self._ = core._
-        self.lock = Lock()
+        self.lock = RLock()
 
         # TODO: Recheck
         configdir = os.path.join(core.userdir, "settings")
@@ -39,6 +39,7 @@ class AccountManager:
         self.init_account_plugins()
         self.load_accounts()
 
+    @lock
     def get_account_plugin(self, plugin):
         """
         get account instance for plugin or None if anonymous.

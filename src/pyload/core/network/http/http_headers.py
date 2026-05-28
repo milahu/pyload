@@ -1,6 +1,6 @@
 import re
 from collections import UserDict
-from typing import Dict, Iterator, List, Optional, Union, Mapping
+from typing import Dict, Iterator, List, Mapping, Optional, Union
 
 from ...utils.convert import to_bytes, to_str
 
@@ -87,7 +87,7 @@ class HttpHeaders(UserDict):
 
             return is_removed
 
-    def get(self, name: str, default: Optional[str] = None) -> Optional[str]:
+    def get(self, name: str, default: Optional[Union[str, int]] = None) -> Optional[Union[str, int]]:
         """Return the last value for a header or a default if the header is missing.
 
         Follows the convention that the most recently set value takes precedence.
@@ -106,7 +106,7 @@ class HttpHeaders(UserDict):
         for norm_key in self.data:
             yield self._original_case.get(norm_key, norm_key)
 
-    def get_list(self, name: str) -> List[str]:
+    def get_list(self, name: str) -> List[Union[str, int]]:
         """Return all values for a header name, or an empty list if not present."""
         return self.data.get(name.lower(), [])
 
@@ -156,7 +156,7 @@ class HttpHeaders(UserDict):
         lines = self.as_lines()
         return [to_bytes(line, encoding="iso-8859-1") for line in lines]
 
-    def __getitem__(self, name: str) -> str:
+    def __getitem__(self, name: str) -> Union[str, int]:
         """Dictionary-like access; returns the last value for a header or raises KeyError."""
         values = self.get_list(name)
         if not values:
@@ -191,8 +191,7 @@ class HttpHeaders(UserDict):
         return new_headers
 
     def with_set(self, name: str, value: Union[str, int]) -> "HttpHeaders":
-        """
-        Return a new HttpHeaders with the given header set (immutable-friendly pattern).
+        """Return a new HttpHeaders with the given header set (immutable-friendly pattern).
 
         This does not modify the current instance.
         """
@@ -200,9 +199,8 @@ class HttpHeaders(UserDict):
         new_headers.set(name, value)
         return new_headers
 
-    def with_set_many(self, headers: Mapping[str, Union[str,int]]) -> "HttpHeaders":
-        """
-        Return a new HttpHeaders with the provided headers set (immutable-friendly pattern).
+    def with_set_many(self, headers: Mapping[str, Union[str, int]]) -> "HttpHeaders":
+        """Return a new HttpHeaders with the provided headers set (immutable-friendly pattern).
 
         This does not modify the current instance.
         """
@@ -212,8 +210,7 @@ class HttpHeaders(UserDict):
         return new_headers
 
     def with_added(self, name: str, value: Union[str, int]) -> "HttpHeaders":
-        """
-        Return a new HttpHeaders with the given header added (immutable-friendly pattern).
+        """Return a new HttpHeaders with the given header added (immutable-friendly pattern).
 
         This does not modify the current instance.
         """
@@ -221,9 +218,8 @@ class HttpHeaders(UserDict):
         new_headers.add(name, value)
         return new_headers
 
-    def with_added_many(self, headers: Mapping[str, Union[str,int]]) -> "HttpHeaders":
-        """
-        Return a new HttpHeaders with the provided headers added (immutable-friendly pattern).
+    def with_added_many(self, headers: Mapping[str, Union[str, int]]) -> "HttpHeaders":
+        """Return a new HttpHeaders with the provided headers added (immutable-friendly pattern).
 
         This does not modify the current instance.
         """

@@ -4,7 +4,7 @@ from ..base.xfs_downloader import XFSDownloader
 class FileqNet(XFSDownloader):
     __name__ = "FileqNet"
     __type__ = "downloader"
-    __version__ = "0.01"
+    __version__ = "0.02"
     __status__ = "testing"
 
     __pattern__ = r"https?://(?:www\.)?fileq\.net/(?P<ID>\w{12})"
@@ -24,5 +24,4 @@ class FileqNet(XFSDownloader):
 
     URL_REPLACEMENTS = [(__pattern__ + ".*", r"https://fileq.net/\g<ID>")]
 
-    NAME_PATTERN = r'<div class="float-start">(?P<N>.+?)<'
-    SIZE_PATTERN = r'>\s*size: (?P<S>[\d.,]+) (?P<U>[\w^_]+)\s*<'
+    INFO_PATTERN = r'onfocus="copy\(this\)">\[URL=[^\]]+\](?P<N>.+?) -  (?P<S>\d+)'

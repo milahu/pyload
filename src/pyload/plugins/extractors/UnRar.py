@@ -193,6 +193,11 @@ class UnRar(BaseExtractor):
     def extract(self, password=None, file=None):
         command = "x" if self.fullpath else "e"
 
+        # Validate file list BEFORE extraction to prevent path traversal
+        file_list = self.list(password)
+        if file_list:
+            self._validate_archive_entries(file_list)
+
         p = self.call_cmd(command, self.filename, file, self.dest, password=password)
 
         #: Communicate and retrieve stderr
@@ -217,7 +222,7 @@ class UnRar(BaseExtractor):
         if p.returncode and p.returncode != 10:  #: RARX_NOFILES:
             raise ArchiveError(self._("Process return code: {}").format(p.returncode))
 
-        return self.list(password)
+        return file_list
 
     def chunks(self):
         files = []
@@ -278,6 +283,9 @@ class UnRar(BaseExtractor):
 
         if self.config.get("ignore_file_attributes", False):
             args.append("-ai")
+
+        # Skip symbolic links to prevent symlink escape attacks
+        args.append("-ol-")
 
         # NOTE: return codes are not reliable, some kind of threading, cleanup
         # whatever issue

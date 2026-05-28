@@ -1,4 +1,5 @@
 import json
+import math
 import os
 import time
 from functools import wraps
@@ -360,13 +361,13 @@ def apikey_auth(func):
         if api_key is not None:
             error = "Invalid API key"
             if api_key.startswith("pl_"):
-                # Look up the API key in the database
+                # Look up the API key in the database (with TTL cache)
                 key_info = api.check_apikey(api_key)
                 if key_info["success"]:
                     # Get user info from the user_id in the key
                     user_id = key_info["data"]["user_id"]
                     key_name = key_info["data"]["name"]
-                    user_data = api.pyload.db.get_all_user_data().get(user_id)
+                    user_data = api.pyload.db.get_user_by_id(user_id)
                     if user_data:
                         now = int(time.time() * 1000)
                         last_used = key_info["data"]["last_used"]
@@ -411,6 +412,106 @@ def apikey_auth(func):
 
     return decorated_function
 
+
+def rate_limit(count=100, period=60):
+    """
+    Rate limiting decorator for endpoints.
+
+    :param count: Maximum number of requests allowed
+    :param period: Time period in seconds
+
+    Usage:
+        @rate_limit(count=100, period=60)
+        @rate_limit(count=100, period="minute")
+        def my_endpoint():
+            ...
+
+    Returns 429 (Too Many Requests) when limit is exceeded.
+    """
+    def decorator(func):
+        if type(count) != int or type(period) != int:
+            raise TypeError("Count and period must be integer")
+        if count < 1:
+            raise ValueError(f"Invalid count: {count}. Must be larger than 0.")
+        if period not in (1, 60, 3600, 86400):
+            raise ValueError(f"Invalid period: {period}. Use 1, 60, 3600 or 86400.")
+
+        # Storage for rate limit tracking: {ip: [(timestamp1, timestamp2, ...)]}
+        # Using a dict with lists of timestamps for each IP
+        request_history = {}
+
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            # Get client IP, handling X-Forwarded-For for proxies
+            client_ip = flask.request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or flask.request.remote_addr
+            if not client_ip:
+                # If we can't determine IP, allow the request (fail open)
+                return func(*args, **kwargs)
+
+            current_time = time.time()
+            cutoff_time = current_time - period
+
+            # Initialize or get request history for this IP
+            if client_ip not in request_history:
+                request_history[client_ip] = []
+
+            # Remove old requests outside the time window
+            request_history[client_ip] = [
+                timestamp for timestamp in request_history[client_ip]
+                if timestamp > cutoff_time
+            ]
+
+            # Check if rate limit is exceeded
+            if len(request_history[client_ip]) >= count:
+                # Calculate when the limit will reset
+                oldest_request = min(request_history[client_ip])
+                retry_after = max(0, math.ceil(oldest_request + period - current_time))
+
+                # Log rate limit violation
+                log = flask.current_app.logger
+                log.warning(
+                    f"Rate limit exceeded for IP {client_ip}: "
+                    f"{len(request_history[client_ip])} requests in {period} "
+                    f"(limit: {count}/{period})"
+                )
+
+                # Return 429 Too Many Requests with Retry-After header
+                response = flask.json.jsonify({
+                    "error": "Rate limit exceeded",
+                    "message": f"Too many requests. Limit: {count} per {period}",
+                    "retry_after": retry_after
+                })
+                response.status_code = 429
+                response.headers["Retry-After"] = str(retry_after)
+                response.headers["X-RateLimit-Limit"] = str(count)
+                response.headers["X-RateLimit-Remaining"] = "0"
+                response.headers["X-RateLimit-Reset"] = str(int(oldest_request + period))
+                return response
+
+            # Add current request to history
+            request_history[client_ip].append(current_time)
+
+            # Add rate limit headers to response
+            remaining = count - len(request_history[client_ip])
+            response = func(*args, **kwargs)
+
+            # If response is a tuple (body, status_code), convert to Response object
+            if isinstance(response, tuple):
+                response = flask.make_response(response)
+
+            # Add rate limit info headers
+            if hasattr(response, 'headers'):
+                response.headers["X-RateLimit-Limit"] = str(count)
+                response.headers["X-RateLimit-Remaining"] = str(remaining)
+                if request_history[client_ip]:
+                    oldest = min(request_history[client_ip])
+                    response.headers["X-RateLimit-Reset"] = str(int(oldest + period))
+
+            return response
+
+        return wrapper
+
+    return decorator
 
 # Decorator alias equal to csrf.exempt for convenient import
 csrf_exempt = csrf.exempt

@@ -17,7 +17,12 @@ PROPRIETARY_RESPONSES = {
 }
 
 
-class BadHeader(Exception):
+class HTTPError(Exception):
+    """Base exception for HTTP-related errors."""
+    pass
+
+
+class BadHeader(HTTPError):
     def __init__(self, code, headers, content=""):
         code = int(code)
         response = http.client.responses.get(code, PROPRIETARY_RESPONSES.get(code, "unknown error code"))
@@ -25,3 +30,8 @@ class BadHeader(Exception):
         self.code = code
         self.headers = headers
         self.content = content
+
+
+class WrongFormat(HTTPError):
+    """Exception raised when chunk metadata file format is invalid."""
+    pass

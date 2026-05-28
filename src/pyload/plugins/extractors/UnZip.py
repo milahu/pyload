@@ -1,7 +1,8 @@
+import fnmatch
 import os
+import stat
 import sys
 import zipfile
-import fnmatch
 
 from pyload.core.utils.fs import safejoin
 from pyload.plugins.base.extractor import ArchiveError, BaseExtractor, CRCError, PasswordError
@@ -51,6 +52,26 @@ class UnZip(BaseExtractor):
     def find(cls):
         return sys.version_info[:2] >= (2, 6)
 
+    def _is_zip_symlink(self, zip_info):
+        """Check if a ZipInfo entry is a symlink using external attributes."""
+        # External attributes upper 16 bits contain Unix file mode
+        # Symlink mode is S_IFLNK (0xA000)
+        return (zip_info.external_attr >> 16) & stat.S_IFLNK == stat.S_IFLNK
+
+    def _validate_zip_symlinks(self, z):
+        """
+        Validate symlink targets in ZIP before extraction.
+
+        :param z: zipfile.ZipFile object
+        :raises ArchiveError: If any symlink points outside destination
+        """
+        with z:
+            for zip_info in z.infolist():
+                if self._is_zip_symlink(zip_info):
+                    # For symlinks, the file content is the target path
+                    symlink_target = z.read(zip_info.filename).decode('utf-8', errors='replace')
+                    self._validate_symlink_target(zip_info.filename, symlink_target, self.dest)
+
     def list(self, password=None):
         with zipfile.ZipFile(self.filename, "r") as z:
             z.setpassword(password)
@@ -83,12 +104,20 @@ class UnZip(BaseExtractor):
         try:
             with zipfile.ZipFile(self.filename, "r") as z:
                 z.setpassword(password)
-                members = (member for member in z.namelist()
+
+                # Validate file list BEFORE extraction to prevent path traversal
+                namelist = z.namelist()
+                self._validate_archive_entries(namelist)
+
+                # Validate symlink targets BEFORE extraction
+                self._validate_zip_symlinks(z)
+
+                members = (member for member in namelist
                            if not any(fnmatch.fnmatch(member, exclusion)
                            for exclusion in self.excludefiles))
-                z.extractall(self.dest, members = members)
+                z.extractall(self.dest, members=members)
                 self.files = [safejoin(self.dest, _f)
-                              for _f in z.namelist()
+                              for _f in namelist
                               if _f[-1] != os.path.sep and _f in members]
 
             return self.files

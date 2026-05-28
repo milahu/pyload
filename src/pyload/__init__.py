@@ -32,7 +32,7 @@ try:
     __version__ = packaging.version.Version(importlib.metadata.version(PKGNAME)).base_version
 except importlib.metadata.PackageNotFoundError:
     __version__ =  "0.5.0"
-__version_info__ = semver.parse_version_info(__version__)
+__version_info__ = semver.VersionInfo.parse(__version__)
 
 # Application wide global storage
 class __storage:
