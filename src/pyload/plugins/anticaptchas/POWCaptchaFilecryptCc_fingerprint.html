@@ -1,0 +1,648 @@
+<html>
+
+<body style="font-family:monospace"></body>
+
+<script type="module">
+
+  window.onload = () => {
+    R().then(fingerprint => {
+      var [a, b, c, d] = fingerprint.split(".");
+      d = atob(d);
+      document.body.innerText = `"${fingerprint}"\n"${a}.${b}.${c}." + base64encode(${JSON.stringify(d)})`;
+    });
+    /*
+    without devtools, the fingerprint is always the same
+    "2.0.63.W1s2MDVdXQ=="
+    "2.0.63." + base64encode("[[605]]")
+
+    with devtools, the fingerprint has some entropy
+    the only variable is the float around 26, which is some time in milliseconds
+    "2.1.62." + base64encode("[[101,0,502],[103,26.40000009536743],[605]]")
+    "2.1.62." + base64encode("[[101,0,502],[103,25.899999618530273],[605]]")
+    "2.1.62." + base64encode("[[101,0,502],[103,26.100000143051147],[605]]")
+    */
+  };
+
+  // anti-bot browser fingerprint generator
+  // https://filecrypt.cc/js/m.js?v=25
+
+  // deobfuscated with webcrack
+  // https://github.com/j4k0xb/webcrack
+
+  // similar to
+  // https://github.com/fingerprintjs/fingerprintjs
+
+  export const R = function () {
+    const i = [];
+    const T = "2";
+    let K = function (Xj, XY = undefined) {
+      return new RegExp(Xj, XY);
+    };
+    let G = function (Xj) {
+      return navigator[Xj];
+    };
+    const A = (() => globalThis)();
+    const M = {
+      Y: 1,
+      l: 2,
+      o: 3,
+      n: 4,
+      x: 5,
+      D: 6,
+      N: 7,
+      h: 8
+    };
+    let q = (Xj, XY, Xl) => {
+      switch (Xj) {
+        case M.Y:
+          return K;
+          break;
+        case M.l:
+          return G;
+          break;
+        case M.o:
+          if (XY) {
+            return A[XY];
+          }
+          return A;
+          break;
+        case M.n:
+          return q(3, "performance")[XY];
+          break;
+        case M.x:
+          return q(3, "document")[XY];
+          break;
+        case M.D:
+          return XY.includes(Xl);
+          break;
+        case M.N:
+          return XY[Xl];
+          break;
+        case M.h:
+          return XY;
+          break;
+      }
+    };
+    const s = (Xj, XY = 120) => {
+      Xj = String(Xj == null ? "" : Xj);
+      if (Xj.length > XY) {
+        return Xj.slice(0, XY);
+      } else {
+        return Xj;
+      }
+    };
+    let F = false;
+    let X0 = "";
+    const X1 = async function () {
+      if (F) {
+        return X0;
+      }
+      F = true;
+      let Xj = 0;
+      let XY = 0;
+      const Xl = [];
+      for (var Xo = 0; Xo < i.length; Xo++) {
+        var Xn = i[Xo];
+        var Xx;
+        try {
+          Xx = await Xn.S?.();
+          if (typeof Xx === "object" && Xx !== null && "sowhat" in Xx) {
+            if (Array.isArray(Xx.C)) {
+              for (const XN of Xx.C) {
+                Xl.push(XN);
+              }
+            }
+            if (Array.isArray(Xx.E)) {
+              for (const Xh of Xx.E) {
+                Xl.push(Xh);
+              }
+            }
+            Xx = Xx.sowhat;
+          }
+          if (Xx) {
+            XY |= 1 << Xo;
+          } else {
+            Xj |= 1 << Xo;
+          }
+        } catch (XS) {
+          Xj |= 1 << Xo;
+          Xl.push([1, Xo]);
+        }
+      }
+      let XD = "";
+      try {
+        XD = btoa(unescape(encodeURIComponent(JSON.stringify(Xl))));
+      } catch (XC) { }
+      X0 = T + "." + XY + "." + Xj + "." + XD;
+      return X0;
+    };
+    const X2 = function (Xj, XY, Xl) {
+      const XD = {
+        W: Xj,
+        a: XY,
+        S: Xl
+      };
+      i.push(XD);
+    };
+    X2({
+      d: 1000
+    }, {}, function () {
+      const Xj = [];
+      const XY = q(M.o, "outerWidth") - q(M.o, "innerWidth");
+      const Xl = q(M.o, "outerHeight") - q(M.o, "innerHeight");
+      if (XY > 160 || Xl > 160) {
+        Xj.push([101, XY, Xl]);
+      }
+      try {
+        let Xn = false;
+        const Xx = {};
+        const XD = {
+          get: function () {
+            Xn = true;
+            return "";
+          }
+        };
+        Object.defineProperty(Xx, "id", XD);
+        const XN = q(3, "console");
+        if (XN && XN.debug) {
+          XN.debug(Xx);
+        }
+        if (Xn) {
+          Xj.push([102]);
+        }
+      } catch (Xh) { }
+      if (XY > 160 || Xl > 160) {
+        try {
+          let XS = 0;
+          let XC = new Image();
+          function Xo() {
+            let Xa = performance.now();
+            console.group();
+            console.dir(XC);
+            console.dirxml(XC);
+            console.dir(console);
+            console.groupEnd();
+            console.trace();
+            console.clear();
+            let Xv = performance.now();
+            ++XS;
+            return Xv - Xa;
+          }
+          ;
+          let XE = [];
+          for (let Xa = 0; Xa < 100; Xa++) {
+            XE.push(Xo());
+          }
+          let XW = XE.reduce((Xv, Xp) => Xv + Xp, 0);
+          if (XW > 1) {
+            Xj.push([103, XW]);
+          }
+        } catch (Xv) { }
+      }
+      return {
+        sowhat: Xj.length > 0,
+        C: Xj
+      };
+    });
+    X2({
+      e: 0
+    }, {
+      e: 1
+    }, function () {
+      const Xj = q(M.o, "screen");
+      const XY = Xj.width < Xj.availWidth || Xj.height < Xj.availHeight;
+      const Xl = XY ? [[201, Xj.width, Xj.height, Xj.availWidth, Xj.availHeight]] : [];
+      const Xo = {
+        sowhat: XY,
+        C: Xl
+      };
+      return Xo;
+    });
+    X2({
+      e: 1
+    }, {
+      e: 0
+    }, async function () {
+      const Xj = q(M.l);
+      const XY = q(M.Y);
+      const Xl = (Xj("userAgent") || "").toLowerCase();
+      const Xo = (Xj("appVersion") || "").toLowerCase();
+      const Xn = (Xj("platform") || "").toLowerCase();
+      const Xx = Xj("oscpu") || "";
+      const XD = Xj("userAgentData");
+      const XN = q(6, Xl, "windows") ? "Windows" : q(6, Xl, "android") ? "Android" : XY("iphone|ipad|ipod|ios").test(Xl) ? "iOS" : q(6, Xl, "mac os x") || q(6, Xl, "macintosh") ? "macOS" : q(6, Xl, "cros") ? "Chrome OS" : q(6, Xl, "linux") ? "Linux" : "Other";
+      let XS = {
+        platform: null
+      };
+      try {
+        if (XD && XD.getHighEntropyValues) {
+          const XQ = await XD.getHighEntropyValues(["platform", "platformVersion", "architecture", "bitness", "model"]);
+          XS = XQ || XS;
+        } else if (XD && XD.platform) {
+          XS.platform = XD.platform;
+        }
+      } catch (XI) { }
+      const XC = XS.platform || null;
+      function XE() {
+        try {
+          const XV = q(M.x, "createElement")("canvas");
+          const XJ = q(M.N, XV, "getContext")("webgl") || q(M.N, XV, "getContext")("experimental-webgl");
+          if (!XJ) {
+            return null;
+          }
+          const XP = q(M.N, XJ, "getExtension")("WEBGL_debug_renderer_info");
+          const Xu = XP ? q(M.N, XJ, "getParameter")(q(M.N, XP, "UNMASKED_VENDOR_WEBGL")) : q(M.N, XJ, "getParameter")(q(M.N, XJ, "VENDOR"));
+          const XO = XP ? XJ.getParameter(XP.UNMASKED_RENDERER_WEBGL) : XJ.getParameter(XJ.RENDERER);
+          return {
+            [q(8, "vendor")]: (Xu || "").toString(),
+            [q(8, "renderer")]: (XO || "").toString()
+          };
+        } catch (Xm) {
+          return null;
+        }
+      }
+      const XW = XE();
+      function Xa() {
+        try {
+          const XV = q(5, "createElement")("span");
+          XV.textContent = "aaaaaaaaaaaaaaaaaaaa";
+          XV.style.cssText = "position:absolute;visibility:hidden;font:16px system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, 'Helvetica Neue', Arial, sans-serif;";
+          q(5, "body").appendChild(XV);
+          const XJ = q(M.o, "getComputedStyle")(XV).fontFamily;
+          q(5, "body").removeChild(XV);
+          const XP = (XJ || "").toLowerCase();
+          return q(6, XP, "-apple-system") || q(6, XP, "sf pro") || q(6, XP, "blinkmacsystemfont");
+        } catch (Xu) {
+          return false;
+        }
+      }
+      const Xv = Xa();
+      let Xp = null;
+      try {
+        const XV = q(3, "AudioContext") || q(3, "webkitAudioContext");
+        if (XV) {
+          const XJ = new XV();
+          Xp = XJ.sampleRate;
+          if (XJ.close) {
+            XJ.close();
+          }
+        }
+      } catch (XP) { }
+      const Xc = [];
+      const XL = [];
+      if (XC && XN !== "Other" && XC !== XN) {
+        const Xu = XC === "macOS" && XY("ipad|iphone|ipod|ios").test(Xl) && Xj("maxTouchPoints") > 1;
+        if (Xu) {
+          XL.push([302, XC, XN]);
+        } else {
+          Xc.push([301, XC, XN]);
+        }
+      }
+      if (Xx) {
+        const XO = Xx.toLowerCase();
+        const Xm = q(6, XO, "win") ? "Windows" : q(6, XO, "mac") ? "macOS" : q(6, XO, "linux") ? "Linux" : q(6, XO, "android") ? "Android" : q(6, XO, "ios") ? "iOS" : "Other";
+        if (XN !== "Other" && Xm !== "Other" && Xm !== XN) {
+          Xc.push([303, Xm, XN]);
+        }
+      }
+      if (q(6, Xo, "win") && XN !== "Windows") {
+        Xc.push([304]);
+      }
+      if (q(6, Xo, "mac") && XN !== "macOS") {
+        Xc.push([305]);
+      }
+      if (q(6, Xo, "linux") && !XY("linux|android|cros").test(Xl)) {
+        Xc.push([306]);
+      }
+      if (q(6, Xn, "win") && XN !== "Windows") {
+        Xc.push([307]);
+      }
+      if ((XY("mac").test(Xn) || XY("macintel").test(Xn)) && XN !== "macOS") {
+        XL.push([308]);
+      }
+      if (q(6, Xn, "linux") && !XY("linux|android|cros").test(Xl)) {
+        Xc.push([309]);
+      }
+      if (XW) {
+        const Xt = (XW.vendor || "").toLowerCase();
+        const XU = (XW.renderer || "").toLowerCase();
+        const Xd = q(6, Xt, "apple") || q(6, XU, "apple") || q(6, XU, "metal") || q(6, XU, "amd") && q(6, XU, "mac") || q(6, XU, "intel") && q(6, XU, "mac") || q(6, XU, "iris openGL engine");
+        if (XN !== "macOS" && Xd) {
+          Xc.push([310, s(XW.vendor), s(XW.renderer), XN]);
+        }
+        if (XN === "macOS" && !Xd) {
+          Xc.push([311, s(XW.vendor), s(XW.renderer)]);
+        }
+      }
+      if (XN === "Windows" && Xv) {
+        XL.push([312]);
+      }
+      return {
+        sowhat: Xc.length > 0,
+        C: Xc,
+        E: XL,
+        v: XN,
+        p: XC,
+        c: XW,
+        L: Xp,
+        Q: Xn,
+        oscpu: Xx
+      };
+    });
+    X2({
+      e: 1
+    }, {
+      e: 0
+    }, async function () {
+      const Xj = q(2);
+      const XY = Xj("userAgent").toLowerCase();
+      const Xl = (Xj("vendor") || "").toLowerCase();
+      const Xo = Xj("productSub");
+      let Xn = "other";
+      if (q(6, XY, "firefox")) {
+        Xn = "firefox";
+      } else if (q(6, XY, "edg/")) {
+        Xn = "edge";
+      } else if (q(6, XY, "opr/") || q(6, XY, "opera")) {
+        Xn = "opera";
+      } else if (q(6, XY, "chrome") && !q(6, XY, "edg/")) {
+        Xn = "chrome";
+      } else if (q(6, XY, "safari") && !q(6, XY, "chrome")) {
+        Xn = "safari";
+      }
+      const Xx = [];
+      if (Xn === "firefox" && Xo !== "20100101") {
+        Xx.push([401, s(Xo, 20)]);
+      }
+      if (["chrome", "edge", "safari", "opera"].includes(Xn) && Xo !== "20030107") {
+        Xx.push([402, s(Xo, 20), Xn]);
+      }
+      if (Xn === "chrome" && !Xl.includes("google")) {
+        Xx.push([403, s(Xl, 40)]);
+      }
+      if (Xn === "edge" && !Xl.includes("google")) {
+        Xx.push([404, s(Xl, 40)]);
+      }
+      if (Xn === "safari" && !Xl.includes("apple")) {
+        Xx.push([405, s(Xl, 40)]);
+      }
+      if (Xn === "firefox" && Xl !== "") {
+        Xx.push([406, s(Xl, 40)]);
+      }
+      if (Xn === "firefox") {
+        let XN = false;
+        try {
+          XN = "buildID" in Xj.call ? false : "buildID" in navigator;
+        } catch (Xh) { }
+        try {
+          if (!XN && q(3, "CSS") && q(3, "CSS").supports) {
+            XN = q(3, "CSS").supports("-moz-appearance", "none");
+          }
+        } catch (XS) { }
+        if (!XN) {
+          Xx.push([407]);
+        }
+      }
+      if (["chrome", "edge", "opera"].includes(Xn) && typeof window.chrome === "undefined") {
+        Xx.push([408, Xn]);
+      }
+      if (Xn === "opera" && typeof q(3, "opr") === "undefined") {
+        Xx.push([409]);
+      }
+      const XD = (Xj("platform") || "").toLowerCase();
+      if (XD.includes("win") && !XY.includes("windows")) {
+        Xx.push([410]);
+      }
+      if (XD.includes("mac") && !XY.includes("mac")) {
+        Xx.push([411]);
+      }
+      if (XD.includes("linux") && !XY.includes("linux")) {
+        Xx.push([412]);
+      }
+      return {
+        sowhat: Xx.length > 0,
+        C: Xx,
+        claimed: Xn,
+        I: XD,
+        V: XY,
+        vendor: Xl,
+        J: Xo
+      };
+    });
+    X2({
+      e: 0
+    }, {
+      e: 0
+    }, function () {
+      const Xj = q(2);
+      const XY = Xj("languages");
+      const Xl = Xj("language");
+      const Xo = XY && XY[0] !== Xl;
+      const Xn = Xo ? [[501, s(Xl, 20), s(XY && XY[0], 20)]] : [];
+      const Xx = {
+        sowhat: Xo,
+        C: Xn
+      };
+      return Xx;
+    });
+    X2({
+      e: 0
+    }, {
+      e: 0
+    }, async function () {
+      const Xj = q(M.l);
+      const XY = q(M.Y);
+      const Xl = [];
+      const Xo = [];
+      if (Xj("webdriver") === true) {
+        Xl.push([601]);
+      }
+      try {
+        const XL = await Xj("permissions").query({
+          [q(M.h, "name")]: "notifications"
+        });
+        const XQ = q(M.N, XL, "state");
+        const XI = q(M.N, Notification, "permission");
+        if (XQ === "denied" && XI !== "denied") {
+          Xl.push([602, s(XQ, 20), s(XI, 20)]);
+        }
+      } catch (XV) { }
+      if (Xj("plugins") && Xj("plugins").length === 0) {
+        Xo.push([603]);
+      }
+      if (Xj("mimeTypes") && Xj("mimeTypes").length === 0) {
+        Xo.push([604]);
+      }
+      if ("chrome" in q(3)) {
+        const XJ = q(3, "chrome");
+        if (!XJ.runtime && !XJ.webstore) {
+          Xo.push([605]);
+        }
+      }
+      try {
+        const XP = q(3, "eval").toString().length;
+        if (XP < 30 || XP > 40) {
+          Xo.push([607, XP]);
+        }
+      } catch (Xu) { }
+      const Xn = Xj("languages") || [];
+      if (Xn.length === 0) {
+        Xl.push([608]);
+      }
+      if (Xn.length === 1 && Xn[0] === "en-US") {
+        Xo.push([609]);
+      }
+      const Xx = Xj("userAgentData");
+      if (Xx && Xx.brands) {
+        const XO = Xx.brands.map(Xm => Xm.brand).join(", ");
+        if (!XO || XO.includes("Not A;Brand")) {
+          Xo.push([610, s(XO, 80)]);
+        }
+      }
+      function XD(Xm, Xt) {
+        try {
+          const XU = typeof Xm == "function" ? Xm : Xm[Xt];
+          if (typeof XU !== "function") {
+            return false;
+          }
+          const Xd = q(M.h, q(3, "Function"), "prototype").toString.call(XU);
+          return !Xd.includes("[native code]");
+        } catch (Xy) {
+          return false;
+        }
+      }
+      function XN(Xm, Xt) {
+        try {
+          const XU = typeof Xm == "function" ? Xm : Xm[Xt];
+          if (typeof XU !== "function") {
+            return false;
+          }
+          const Xd = q(M.h, q(3, "Function"), "prototype").toString.call(XU);
+          return Xd;
+        } catch (Xy) {
+          return "";
+        }
+      }
+      const Xh = ["debug", "log", "error"];
+      for (const Xm of Xh) {
+        if (XD(q(3, "console"), Xm)) {
+          const Xt = XN(q(3, "console"), Xm);
+          Xo.push([611, Xm, s(Xt, 200)]);
+        }
+      }
+      if (XD(Xj("permissions"), "query")) {
+        Xo.push([612, s(Xj("permissions").query.toString(), 100)]);
+      }
+      const XS = q(M.o, "screen");
+      const XC = ["width", "height", "availWidth", "availHeight"];
+      for (const XU of XC) {
+        if (XD(XS.__lookupGetter__(XU))) {
+          Xo.push([625, XU]);
+        }
+      }
+      try {
+        const Xd = [[3, "open"], [3, "setTimeout"], [3, "setInterval"], [3, "addEventListener"], [3, "close"], [3, "__lookupGetter__"]];
+        for (const Xy of Xd) {
+          if (XD(q(Xy[0]), Xy[1])) {
+            let XB = XN(q(Xy[0]), Xy[1]);
+            Xo.push([620, Xy[1], s(XB, 100)]);
+          }
+        }
+      } catch (Xr) { }
+      try {
+        if (XD(q(3).location, "reload")) {
+          Xo.push([620, "location.reload"]);
+        }
+      } catch (Xe) { }
+      try {
+        if (XD(window.__lookupGetter__("outerWidth"))) {
+          Xo.push([621]);
+        }
+        if (XD(window.__lookupGetter__("innerWidth"))) {
+          Xo.push([622]);
+        }
+        if (XD(window.__lookupGetter__("outerHeight"))) {
+          Xo.push([623]);
+        }
+        if (XD(window.__lookupGetter__("innerHeight"))) {
+          Xo.push([624]);
+        }
+      } catch (XH) { }
+      try {
+        if (XD(navigator.__lookupGetter__("userAgent"))) {
+          Xo.push([626, s(navigator.__lookupGetter__("userAgent").toString(), 1024)]);
+        }
+        if (XD(navigator.__lookupGetter__("appVersion"))) {
+          Xo.push([626, s(navigator.__lookupGetter__("appVersion").toString(), 1024)]);
+        }
+      } catch (Xk) { }
+      function XE() {
+        try {
+          const Xf = q(5, "createElement")("canvas").getContext("webgl");
+          if (!Xf) {
+            return null;
+          }
+          const Xb = q(7, Xf, "getExtension")("WEBGL_debug_renderer_info");
+          if (Xb) {
+            return q(7, Xf, "getParameter")(q(7, Xb, "UNMASKED_RENDERER_WEBGL"));
+          } else {
+            return "";
+          }
+        } catch (Xw) {
+          return null;
+        }
+      }
+      const XW = XE();
+      if (XW && XY("swiftshader|mesa|angle", "i").test(XW)) {
+        Xo.push([613, s(XW)]);
+      }
+      const Xa = XY("puppeteer|playwright|selenium|phantomjs|nightmare|webdriver|__pwInitScripts", "i");
+      const Xv = Object.keys(q(3));
+      const Xp = Xv.filter(Xf => Xa.test(Xf));
+      if (Xp.length) {
+        Xl.push([614, s(Xp.join(","), 80)]);
+      }
+      let Xc = 0;
+      try {
+        const Xf = Object.getOwnPropertyNames(q(3));
+        for (let Xb = 0; Xb < Xf.length; Xb++) {
+          if (Xf[Xb].length > 4 && Xf[Xb].slice(0, 4) === "cdc_") {
+            Xc++;
+          }
+        }
+      } catch (Xw) { }
+      if (Xc > 0) {
+        Xl.push([615, Xc]);
+      }
+      try {
+        if (q(M.o, "outerHeight") === 0) {
+          Xl.push([616]);
+        }
+        if (q(M.o, "outerWidth") === 0) {
+          Xl.push([617]);
+        }
+      } catch (Xi) { }
+      try {
+        const XT = q(3, "performance");
+        const XK = XT.now();
+        for (let XA = 0; XA < 10000; XA++) { }
+        const XG = XT.now();
+        if (q(3, "Math").abs(XG - XK - 0.01) < 0.01) {
+          Xo.push([618]);
+        }
+      } catch (Xg) { }
+      try {
+        const XM = Xj("connection");
+        if (XM && XM.rtt === 0 && XM.downlink === 0) {
+          Xo.push([619]);
+        }
+      } catch (Xq) { }
+      return {
+        sowhat: Xl.length > 0,
+        C: Xl,
+        E: Xo
+      };
+    });
+    return X1;
+  }();
+</script>

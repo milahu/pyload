@@ -97,6 +97,8 @@ pkgs.mkShell {
     pillow # for some CAPTCHA plugin
     slixmpp # XMPP plugin
 
+    psutil
+
     ]))
   ];
 }

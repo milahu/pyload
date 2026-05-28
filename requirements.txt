@@ -61,3 +61,5 @@ watchdog
 colorlog # colorful console logging
 pillow # for some CAPTCHA plugin
 slixmpp # XMPP plugin
+
+psutil

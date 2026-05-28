@@ -6,6 +6,7 @@
 import base64
 import re
 import urllib.parse
+import time
 
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
@@ -19,9 +20,12 @@ from ..anticaptchas.ReCaptcha import ReCaptcha
 from ..anticaptchas.SolveMedia import SolveMedia
 from ..anticaptchas.CutCaptcha import CutCaptcha
 from ..anticaptchas.CircleCaptcha import CircleCaptcha
+from ..anticaptchas.POWCaptchaFilecryptCc import POWCaptchaFilecryptCc as POWCaptcha
 
 from ..base.decrypter import BaseDecrypter
 from ..helpers import replace_patterns
+
+from pyload.plugins.decrypters.ClickNLoad import clicknload_decrypt2
 
 
 class FilecryptCc(BaseDecrypter):
@@ -49,7 +53,19 @@ class FilecryptCc(BaseDecrypter):
     PACKAGE_NAME_PATTERN = r"<h2>([^<]+)</h2>"
 
     DLC_LINK_PATTERN = r'onclick="DownloadDLC\(\'(.+)\'\);">'
+
+    # TODO remove. all these links are protected by captchas
+    # so it is better to add links via clicknload (CNL)
+    # <button id="055AC1A2EE" onclick="try{openLink(this.getAttribute('data-055ac1a2ee'), this);}"
+    #   data-055ac1a2ee="591096EB26" class="download" target="_blank" title="Download"></button>
     WEBLINK_PATTERN = r"<button onclick=\"[\w\-]+?/\*\d+?\*/\('([\w/-]+?)',"
+
+    # TODO how do they escape singlequotes in the package name?
+    # "&apos;"? "&#39;"? "&#x27;"?
+    # package name is the last argument to CNLPOP
+    CNL_PATTERN = r"""CNLPOP\('([^']+)', '([^']+)', '([^']+)', '(.*?)'\);"""
+
+    # FIXME where is: status, url, hoster
     MIRROR_PAGE_PATTERN = r'"[\w]*" href="(https?://(?:www\.)?filecrypt.cc/Container/\w+\.html\?mirror=\d+)">'
     OFFLINE_PATTERN = r">Not Found<"
 
@@ -60,8 +76,10 @@ class FilecryptCc(BaseDecrypter):
     SOLVEMEDIA_CAPTCHA_PATTERN = r'<script type="text/javascript" src="(https?://api(?:-secure)?\.solvemedia\.com/papi/challenge.+?)"'
     CUTCAPTCHA_CAPTCHA_KEY_PATTERN = r'''\sCUTCAPTCHA_MISERY_KEY\s*=\s*["']([0-9a-f]{40})["']'''
     CUTCAPTCHA_API_KEY_PATTERN = r'''cutcaptcha\.net/captcha/([0-9a-zA-Z]+)\.js'''
+    POW_CAPTCHA_PATTERN = r'''<div class="pow-captcha" id="pow-captcha" .*>\n'''
 
     CAPTCHA_PATTERNS = [
+        POWCaptcha.POW_CHALLENGE_PATTERN,
         INTERNAL_CAPTCHA_PATTERN,
         CIRCLE_CAPTCHA_PATTERN,
         KEY_CAPTCHA_PATTERN,
@@ -71,6 +89,7 @@ class FilecryptCc(BaseDecrypter):
 
     def setup(self):
         self.urls = []
+        self.package_name = None
 
         try:
             self.req.http.close()
@@ -111,7 +130,7 @@ class FilecryptCc(BaseDecrypter):
         if self.config.get("handle_mirror_pages"):
             self.handle_mirror_pages()
 
-        package_name = self.get_package_name()
+        package_name = self.package_name or self.get_package_name()
 
         for handle in (
             self.handle_CNL,
@@ -178,7 +197,7 @@ class FilecryptCc(BaseDecrypter):
 
     def search_captcha(self, html):
         for pattern in self.CAPTCHA_PATTERNS:
-            if match := re.search(pattern, html):
+            if match := re.search(pattern, html, flags=re.DOTALL):
                 self.log_info("search_captcha: found captcha", repr(match.group(0)))
                 return True
         return False
@@ -186,6 +205,7 @@ class FilecryptCc(BaseDecrypter):
     def handle_captcha(self, submit_url):
         if self.search_captcha(self.data):
             for handle in (
+                self._handle_pow_captcha,
                 self._handle_internal_captcha,
                 self._handle_circle_captcha,
                 self._handle_solvemedia_captcha,
@@ -214,6 +234,34 @@ class FilecryptCc(BaseDecrypter):
         else:
             self.log_info(self._("No captcha found"))
             return self.data
+
+    def _handle_pow_captcha(self, url):
+        retry_max = 10
+        data = self.data
+        self.captcha = POWCaptcha(self.pyfile)
+        for retry_idx in range(retry_max):
+            m = re.search(POWCaptcha.POW_CHALLENGE_PATTERN, data, flags=re.DOTALL)
+            if not m:
+                if retry_idx == 0:
+                    self.log_error("POWCaptcha: Not found POW_CHALLENGE_PATTERN")
+                    return None
+                else:
+                    # solved captchas
+                    return data
+            if retry_idx > 0:
+                self.log_debug(f"POWCaptcha: try {retry_idx + 1} of {retry_max}")
+            # the user has to click the captcha
+            # to start the POW calculation
+            time.sleep(2)
+            params = self.captcha.challenge(data)
+            data = self._filecrypt_load_url(url, post=params)
+        # no. this is handled in "def handle_captcha"
+        # else:
+        #     # reached retry_max
+        #     m = re.search(POWCaptcha.POW_CHALLENGE_PATTERN, data, flags=re.DOTALL)
+        #     if m:
+        #         # failed to solve captcha
+        return data
 
     def _handle_internal_captcha(self, url):
         m = re.search(self.INTERNAL_CAPTCHA_PATTERN, self.data)
@@ -364,37 +412,31 @@ class FilecryptCc(BaseDecrypter):
             self.log_debug(f"Error decrypting weblinks: {exc}")
 
     def handle_CNL(self):
+        # based on https://filecrypt.cc/helper.html
         try:
             m = re.search(r"const (\w+) = CNLPOP;", self.site_with_links)
             if m is not None:
                 self.site_with_links = self.site_with_links.replace(m.group(1), "CNLPOP")
 
-            CNLdata = re.findall(
-                r'onsubmit="CNLPOP\(\'(.*)\', \'(.*)\', \'(.*)\', \'(.*)\'\);',
+            cnl_data_list = re.findall(
+                self.CNL_PATTERN,
                 self.site_with_links,
             )
-            for index in CNLdata:
-                self.urls.extend(self._get_links(index[2], index[1]))
+            for cnl_data in cnl_data_list:
+                # jk = cnl_data[0] # jk return value: "A397C71436" # noise?
+                key_hexstr = cnl_data[1] # 32 char hex string
+                assert len(key_hexstr) == 32, f"bad key_hexstr: {key_hexstr!r}"
+                assert re.fullmatch(r"[0-9a-fA-F]+", key_hexstr), f"bad key_hexstr: {key_hexstr!r}"
+                crypted = cnl_data[2] # long base64 string
+                # NOTE self.package_name is the package name of the last cnl_data
+                # but usually there is only one cnl_data
+                if cnl_data[3]:
+                    self.package_name = cnl_data[3]
+                links = clicknload_decrypt2(crypted, key_hexstr)
+                self.urls.extend(links)
 
         except Exception as exc:
-            self.log_debug(f"Error decrypting CNL: {exc}")
-
-    def _get_links(self, crypted, jk):
-        #: Get key and iv
-        key = iv = bytes.fromhex(jk)
-
-        #: Decrypt
-        cipher = Cipher(algorithms.AES(key), modes.CBC(iv), backend=default_backend())
-        decryptor = cipher.decryptor()
-        text = to_str(
-            decryptor.update(base64.b64decode(crypted)) + decryptor.finalize()
-        )
-
-        #: Extract links
-        text = text.replace("\x00", "").replace("\r", "")
-        links = [link for link in text.split("\n") if link]
-
-        return links
+            self.log_debug(f"Error decrypting CNL: {type(exc).__name__}: {exc}")
 
     def _filecrypt_load_url(self, *args, **kwargs):
         try:
