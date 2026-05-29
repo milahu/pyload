@@ -232,9 +232,9 @@ class BaseExtractor(BasePlugin):
             # Reject absolute paths (also catches UNC paths)
             if normalized.startswith("/"):
                 raise ArchiveError(f"Attempted path traversal in archive: {entry}")
+            '''
             self.log_debug(f'_validate_archive_entries: normalized={normalized}')
             self.log_debug(f'_validate_archive_entries: normalized.startswith("/")={normalized.startswith("/")}')
-            '''
 
             # Check for invalid Windows characters
             invalid_chars = '<>:"|?*'
