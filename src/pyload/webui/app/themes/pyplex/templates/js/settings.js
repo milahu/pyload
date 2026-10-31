@@ -271,6 +271,31 @@ class SettingsUI {
       traditional: true,
       success: (response) => {
         panel.html(response);
+
+        // Inject client-side-only setting when webui section is shown
+        if (category === 'core' && section === 'webui') {
+          const $table = panel.find('table.settable').first();
+          if ($table.length > 0 && $table.find('#client_reset_yesno_row').length === 0) {
+            const $row = $(`<tr id="client_reset_yesno_row">
+              <td><label for="client_reset_yesno" style="font-size: 14px; font-weight: 400;">{{_('Reset "Don\'t ask again" answers')}}:</label></td>
+              <td>
+                <input type="checkbox" id="client_reset_yesno"/>
+              </td>
+            </tr>`);
+            $table.append($row);
+            $('#client_reset_yesno').on('change', (event) => {
+              localStorage.setItem("ui.reset_yesno", event.target.checked);
+            });
+            const $checkbox = $('#client_reset_yesno');
+            if (sessionStorage.getItem('yesNoSettings') === null) {
+              $checkbox.prop('checked', true);
+              $checkbox.prop('disabled', true);
+            } else {
+              $checkbox.prop('checked', false);
+              $checkbox.prop('disabled', false);
+            }
+          }
+        }
       }
     });
   }
@@ -283,6 +308,11 @@ class SettingsUI {
       contentType: 'application/json',
       data: JSON.stringify({category: category, config: formToObject(`#${category}_form`)}),
       success: () => {
+        if (localStorage.getItem('ui.reset_yesno') === 'true') {
+          sessionStorage.removeItem('yesNoSettings');
+        }
+        $('#client_reset_yesno').prop('checked', false);
+        localStorage.removeItem("ui.reset_yesno");
         uiHandler.indicateSuccess("{{_('Settings saved')}}");
       }
     }).fail(() => {
@@ -460,10 +490,25 @@ class ApikeysUI {
   modalShowApikey(key) {
     return new Promise((resolve) => {
       const apikeyKey = $("#apikeyGeneratedKey");
+      const apikeyQr = $("#apikeyQr");
       this.modalSwitch("Copy");
       apikeyKey.val(key);
+
+      const protocol = window.location.protocol;
+      const host = window.location.hostname;
+      const port = window.location.port || (protocol === "https:" ? "443" : "80");
+      let pathPrefix = $("#path-prefix").attr("content") || "";
+      if (pathPrefix.endsWith("/")) {
+        pathPrefix = pathPrefix.slice(0, -1);
+      }
+      const ssl = protocol === "https:" ? "true" : "false";
+      const deepLink = `${protocol}//${host}${window.location.port ? `:${port}` : ''}/${pathPrefix ? `${pathPrefix}/` : ''}qr-redirector#host=${host}&port=${port}&path=${pathPrefix}&ssl=${ssl}&key=${key}`;
+
+      apikeyQr.attr("value", deepLink);
+
       $('#apikeyCopyDismissBtn').one('click', (event) => {
         apikeyKey.val("");
+        apikeyQr.attr("value", "");
         resolve();
       })
       $('#apikeyCopyBtn').off('click').on('click', (event) => {
@@ -492,6 +537,7 @@ class ApikeysUI {
     $('#apikeyGenForm').trigger('reset');
     $('#apikeyCopyForm').trigger('reset');
     $("#apikeyGeneratedKey").val('');
+    $("#apikeyQr").attr("value", "");
   }
 
   loadApiKeys() {

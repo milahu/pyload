@@ -293,7 +293,7 @@ class HTTPRequest:
             url = f"{url}?{get}"
 
         if self.ssl_aiachaser and url.startswith("https://"):
-            chaser = AiaChaser()
+            chaser = AiaChaser(allow_private_ip=self.allow_private_ip)
             try:
                 pem_data = "".join([
                     cert.public_bytes(encoding=Encoding.PEM).decode("ascii")

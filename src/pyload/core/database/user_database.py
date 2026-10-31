@@ -1,3 +1,4 @@
+import hmac  # Only imported for its secure string comparison function
 import os
 
 from cryptography.hazmat.primitives import hashes
@@ -58,7 +59,8 @@ def _check_password(hashed, clear):
     salt = hashed[:32]
     to_compare = _salted_password(clear, salt)
 
-    return hashed == to_compare
+    # CRITICAL: Always use compare_digest instead of `==` to prevent timing attacks!
+    return hmac.compare_digest(hashed, to_compare)
 
 
 class UserDatabaseMethods:
@@ -202,6 +204,30 @@ class UserDatabaseMethods:
             None
         """
         self.c.execute("UPDATE users SET role=? WHERE name=?", (role, username))
+
+    @style.queue
+    def set_user_permission(self, username, perms, role):
+        """
+        Update a user's permission flags and role atomically.
+
+        Returns whether an existing user's authorization values changed.
+        """
+        self.c.execute(
+            "SELECT permission, role FROM users WHERE name=?",
+            (username,),
+        )
+        current = self.c.fetchone()
+        if not current:
+            return False
+
+        if current == (perms, role):
+            return False
+
+        self.c.execute(
+            "UPDATE users SET permission=?, role=? WHERE name=?",
+            (perms, role, username),
+        )
+        return True
 
     @style.queue
     def user_exists(self, username):

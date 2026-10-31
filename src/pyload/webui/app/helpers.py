@@ -113,31 +113,34 @@ def clear_session(session=flask.session, permanent=True):
 
 
 def clear_all_user_sessions(username):
-    session_dir = flask.current_app.config['SESSION_FILE_DIR']
+    if flask.has_request_context() and flask.session.get("name") == username:
+        clear_session()
+
+    session_dir = flask.current_app.config["SESSION_FILE_DIR"]
+    serializer = flask.current_app.session_interface.serializer
     sessions_cleared = 0
 
     def _read_session_file(filepath):
-        session_data = {}
+        with open(filepath, "rb") as f:
+            timeout_bytes = f.read(4)
+            if len(timeout_bytes) != 4:
+                raise ValueError(f"Invalid session file header: {filepath}")
+            return serializer.decode(f.read())
 
-        if os.path.exists(filepath):
-            with open(filepath, 'rb') as f:
-                timeout_bytes = f.read(4)  # Read the 4-byte timeout header
-                if len(timeout_bytes) == 4:
-                    # timeout = struct.unpack("I", timeout_bytes)[0]   # little-endian unsigned int
-                    session_data = flask.current_app.session_interface.serializer.decode(f.read())
+    try:
+        entries = os.scandir(session_dir)
+    except FileNotFoundError:
+        return sessions_cleared
 
-        return session_data
-
-    if os.path.exists(session_dir):
-        for filename in os.listdir(session_dir):
-            filepath = os.path.join(session_dir, filename)
-            try:
-                session_info = _read_session_file(filepath)
-                if isinstance(session_info, dict) and session_info.get("name") == username:
-                    os.remove(filepath)
-                    sessions_cleared += 1
-            except Exception:
+    with entries:
+        for entry in entries:
+            if not entry.is_file(follow_symlinks=False):
                 continue
+            filepath = entry.path
+            session_info = _read_session_file(filepath)
+            if isinstance(session_info, dict) and session_info.get("name") == username:
+                os.remove(filepath)
+                sessions_cleared += 1
 
     return sessions_cleared
 
@@ -293,11 +296,19 @@ def is_loopback_request(request=flask.request, check_source=True):
         ):
             return False
 
-    remote_addr = request.remote_addr
-    if not remote_addr:
-        return False
+    return is_loopback_address(get_client_ip(request, ignore_proxyfix=True))
 
-    return is_loopback_address(remote_addr)
+
+def get_client_ip(request=flask.request, ignore_proxyfix=False):
+    remote_addr = request.remote_addr or "unknown"
+
+    if ignore_proxyfix:
+        # Return the TCP peer address before any trusted-proxy middleware rewrites it.
+        proxy_fix_original = request.environ.get("werkzeug.proxy_fix.orig", {})
+        return proxy_fix_original.get("REMOTE_ADDR", remote_addr)
+
+    # Return the peer address resolved by the configured trusted-proxy middleware.
+    return remote_addr
 
 
 def login_required(perm):
@@ -340,7 +351,7 @@ def apikey_auth(func):
     2. Store user info in flask.g
     3. Not create or use sessions
 
-    If no API auth is provided, it will use session-based authentication.
+    If no API key is provided, it will use session-based authentication.
 
     Note: This decorator automatically makes the endpoint CSRF exempt to allow API access.
     """
@@ -353,8 +364,7 @@ def apikey_auth(func):
         api = flask.current_app.config["PYLOAD_API"]
         log = flask.current_app.logger
 
-        # Get client IP, safely handling X-Forwarded-For
-        client_ip = flask.request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or flask.request.remote_addr
+        client_ip = get_client_ip()
 
         # Check for API key in header
         api_key = flask.request.headers.get("X-API-Key", None)
@@ -442,11 +452,7 @@ def rate_limit(count=100, period=60):
 
         @wraps(func)
         def wrapper(*args, **kwargs):
-            # Get client IP, handling X-Forwarded-For for proxies
-            client_ip = flask.request.headers.get("X-Forwarded-For", "").split(",")[0].strip() or flask.request.remote_addr
-            if not client_ip:
-                # If we can't determine IP, allow the request (fail open)
-                return func(*args, **kwargs)
+            client_ip = get_client_ip()
 
             current_time = time.time()
             cutoff_time = current_time - period

@@ -15,7 +15,7 @@ from pyload.core.api import Destination
 from pyload.core.utils.convert import to_str
 from pyload.core.utils.misc import eval_js
 
-from ..helpers import config_check, csrf_exempt, is_loopback_request
+from ..helpers import config_check, csrf_exempt, get_client_ip, is_loopback_request
 
 #: url_prefix here is intentional since it should not be affected by path prefix
 bp = flask.Blueprint("flash", __name__, url_prefix="/")
@@ -23,6 +23,7 @@ bp = flask.Blueprint("flash", __name__, url_prefix="/")
 
 #: decorators
 def local_check(func):
+    """Restrict Click'N'Load endpoints to requests from the local machine."""
     @wraps(func)
     def wrapper(*args, **kwargs):
         http_host = flask.request.environ.get("HTTP_HOST")
@@ -31,7 +32,7 @@ def local_check(func):
                 "127.0.0.1:9666",
                 "[::1]:9666",
         ):
-            remote_addr = flask.request.environ.get("REMOTE_ADDR")
+            remote_addr = get_client_ip(ignore_proxyfix=True)
             local_addr = g.get("web_addr")
             if local_addr == remote_addr:
                 return func(*args, **kwargs)
@@ -40,8 +41,12 @@ def local_check(func):
                 if is_loopback_request(check_source=False):
                     return func(*args, **kwargs)
 
-        flask.current_app.logger.error("Refusing Connection")
-        return "Forbidden", 403
+            flask.current_app.logger.error(f"local_check: Refusing Connection from {remote_addr}")
+            return "Forbidden", 403
+
+        else:
+            flask.current_app.logger.error("local_check: Refusing Connection")
+            return "Forbidden", 403
 
     return wrapper
 

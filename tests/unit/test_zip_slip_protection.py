@@ -3,9 +3,11 @@ Unit tests for path traversal ("Zip Slip") attack prevention in archive extracto
 """
 import os
 import platform
+import stat
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import MagicMock, Mock, patch
 
 # Add src to path for imports
@@ -489,6 +491,88 @@ class TestTarSymlinkProtection(unittest.TestCase):
             untar._safe_extractall(tar, self.temp_dir)
             untar._safe_extractall(tar, self.temp_dir)
 
+    def test_data_filter_permissions_and_ownership_are_applied(self):
+        """TAR extraction applies data-filter permissions without changing archive info."""
+        import io
+        import tarfile
+        from unittest.mock import Mock, patch
+
+        from pyload.plugins.extractors.UnTar import UnTar
+
+        tar_buffer = io.BytesIO()
+        with tarfile.open(fileobj=tar_buffer, mode="w") as archive:
+            file_info = tarfile.TarInfo(name="privileged")
+            file_info.mode = 0o6755
+            file_info.uid = 123
+            file_info.gid = 456
+            file_info.uname = "archive-user"
+            file_info.gname = "archive-group"
+            file_info.size = 1
+            archive.addfile(file_info, io.BytesIO(b"x"))
+
+            non_executable = tarfile.TarInfo(name="non-executable")
+            non_executable.mode = 0o666
+            non_executable.size = 1
+            archive.addfile(non_executable, io.BytesIO(b"x"))
+
+            directory = tarfile.TarInfo(name="directory")
+            directory.type = tarfile.DIRTYPE
+            directory.mode = 0o777
+            archive.addfile(directory)
+
+            symlink = tarfile.TarInfo(name="link")
+            symlink.type = tarfile.SYMTYPE
+            symlink.linkname = "directory/../privileged"
+            symlink.mode = 0o777
+            archive.addfile(symlink)
+
+        tar_buffer.seek(0)
+        with tarfile.open(fileobj=tar_buffer, mode="r") as archive:
+            original_members = archive.getmembers()
+            mock_pyfile = Mock()
+            mock_pyfile.m.pyload = Mock()
+            untar = UnTar(mock_pyfile, "test.tar", self.temp_dir)
+
+            with patch.object(archive, "extractall") as extractall:
+                untar._safe_extractall(archive, self.temp_dir)
+
+            extracted_members = list(extractall.call_args.args[1])
+            (
+                privileged,
+                non_executable_member,
+                filtered_directory,
+                filtered_symlink,
+            ) = extracted_members
+
+            self.assertIsNot(privileged, original_members[0])
+            self.assertEqual(privileged.mode, 0o755)
+            self.assertIsNone(privileged.uid)
+            self.assertIsNone(privileged.gid)
+            self.assertIsNone(privileged.uname)
+            self.assertIsNone(privileged.gname)
+            self.assertEqual(original_members[0].mode, 0o6755)
+            self.assertEqual(original_members[0].uid, 123)
+            self.assertEqual(non_executable_member.mode, 0o644)
+            self.assertIsNone(filtered_directory.mode)
+            self.assertEqual(filtered_symlink.linkname, "privileged")
+            self.assertIsNone(filtered_symlink.mode)
+
+    def test_data_filter_rejects_unrecognized_special_members(self):
+        """TAR extraction must reject special member types other than files and links."""
+        import tarfile
+        from unittest.mock import Mock
+
+        from pyload.plugins.extractors.UnTar import UnTar
+
+        special = tarfile.TarInfo(name="special")
+        special.type = b"X"
+        mock_pyfile = Mock()
+        mock_pyfile.m.pyload = Mock()
+        untar = UnTar(mock_pyfile, "test.tar", self.temp_dir)
+
+        with self.assertRaisesRegex(ArchiveError, "Special files"):
+            untar._filter_tar_member(special, self.temp_dir)
+
 
 class TestUnZipPathTraversal(unittest.TestCase):
     """Test path traversal protection in UnZip extractor"""
@@ -580,6 +664,70 @@ class TestZipSymlinkProtection(unittest.TestCase):
             self.assertIn("symlink", str(ctx.exception).lower())
 
 
+class TestUnZipExtractionBehavior(unittest.TestCase):
+    """Regression tests for normal UnZip extraction behavior."""
+
+    def setUp(self):
+        self.temp_dir = tempfile.mkdtemp()
+        self.archive_path = os.path.join(self.temp_dir, "test.zip")
+        self.mock_pyfile = Mock()
+        self.mock_pyfile.m.pyload = Mock()
+
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.temp_dir)
+
+    def test_extract_returns_non_excluded_files_and_omits_directories(self):
+        """Extraction should preserve the selected files without listing directories."""
+        from pyload.plugins.extractors.UnZip import UnZip
+
+        with zipfile.ZipFile(self.archive_path, "w") as archive:
+            archive.writestr("folder/", "")
+            archive.writestr("folder/keep.txt", "keep")
+            archive.writestr("skip.txt", "skip")
+
+        unzip = UnZip(
+            self.mock_pyfile,
+            self.archive_path,
+            self.temp_dir,
+            excludefiles=["skip.txt"],
+        )
+
+        self.assertEqual(
+            unzip.list(),
+            [
+                os.path.join(self.temp_dir, "folder", "keep.txt"),
+                os.path.join(self.temp_dir, "skip.txt"),
+            ],
+        )
+        self.assertEqual(
+            unzip.extract(),
+            [os.path.join(self.temp_dir, "folder", "keep.txt")],
+        )
+        self.assertTrue(os.path.isfile(os.path.join(self.temp_dir, "folder", "keep.txt")))
+        self.assertFalse(os.path.exists(os.path.join(self.temp_dir, "skip.txt")))
+
+    def test_extract_keeps_archive_open_after_safe_symlink_validation(self):
+        """Safe symlink metadata must not close the archive before extraction."""
+        from pyload.plugins.extractors.UnZip import UnZip
+
+        with zipfile.ZipFile(self.archive_path, "w") as archive:
+            archive.writestr("file.txt", "contents")
+            symlink = zipfile.ZipInfo("link")
+            symlink.external_attr = (stat.S_IFLNK | 0o644) << 16
+            archive.writestr(symlink, "file.txt")
+
+        unzip = UnZip(self.mock_pyfile, self.archive_path, self.temp_dir)
+
+        self.assertEqual(
+            unzip.extract(),
+            [
+                os.path.join(self.temp_dir, "file.txt"),
+                os.path.join(self.temp_dir, "link"),
+            ],
+        )
+
+
 class TestRarSymlinkProtection(unittest.TestCase):
     """Test symlink protection in UnRar extractor"""
 
@@ -645,7 +793,7 @@ class TestRarSymlinkProtection(unittest.TestCase):
         unrar = UnRar(mock_pyfile, "test.rar", self.temp_dir)
 
         # Mock the list method to return a malicious path
-        with patch.object(unrar, 'list', return_value=[os.path.join(self.temp_dir, "../etc/passwd")]):
+        with patch.object(unrar, '_list_raw', return_value=[os.path.join(self.temp_dir, "../etc/passwd")]):
             # Attempting extraction with traversal should raise ArchiveError
             with self.assertRaises(ArchiveError):
                 unrar.extract(password=None)
@@ -682,6 +830,18 @@ class TestSevenZipSymlinkProtection(unittest.TestCase):
             if "l" in args and "-slt" in args:
                 # Simulate 7z list -slt output with a symlink
                 output = """
+Listing archive: test.7z
+
+--
+Path = test.7z
+Type = 7z
+Physical Size = 1234567
+Headers Size = 4567
+Method = LZMA2:1536k
+Solid = +
+Blocks = 1
+
+----------
 Path = regular_file.txt
 Size = 1024
 Attributes = .....
@@ -703,7 +863,7 @@ Attributes = .....
         with patch.object(sevenzp, 'call_cmd', side_effect=mock_call_cmd):
             # Attempting extraction with symlinks should raise ArchiveError
             with self.assertRaises(ArchiveError) as ctx:
-                sevenzp._detect_7zip_symlinks(password=None)
+                sevenzp.extract(password=None)
             self.assertIn("symlink", str(ctx.exception).lower())
 
     def test_7zip_path_traversal_protection_before_extraction(self):
@@ -717,8 +877,36 @@ Attributes = .....
         mock_pyfile.m.pyload = Mock()
         sevenzp = SevenZip(mock_pyfile, "test.7z", self.temp_dir)
 
-        # Mock the list method to return a malicious path
-        with patch.object(sevenzp, 'list', return_value=[os.path.join(self.temp_dir, "../etc/passwd")]):
+        # Mock the call_cmd to return list output with a malicious path
+        def mock_call_cmd(*args, **kwargs):
+            mock_process = Mock()
+            if "l" in args and "-slt" in args:
+                # Simulate 7z list -slt output with a malicious path
+                output = """
+Listing archive: test.7z
+
+--
+Path = test.7z
+Type = 7z
+Physical Size = 1234567
+Headers Size = 4567
+Method = LZMA2:1536k
+Solid = +
+Blocks = 1
+
+----------
+Path = ../etc/passwd
+Size = 1024
+Attributes = .....
+"""
+                mock_process.communicate.return_value = (output, "")
+            else:
+                mock_process.communicate.return_value = ("", "")
+            mock_process.returncode = 0
+            return mock_process
+
+        with patch.object(sevenzp, 'call_cmd', side_effect=mock_call_cmd):
             # Attempting extraction with traversal should raise ArchiveError
-            with self.assertRaises(ArchiveError):
+            with self.assertRaises(ArchiveError) as ctx:
                 sevenzp.extract(password=None)
+            self.assertIn("traversal", str(ctx.exception).lower())

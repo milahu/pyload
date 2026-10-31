@@ -151,8 +151,16 @@ class Api:
         self._ = core._
 
         # API key cache
-        self._apikey_cache = {}  # Format: {key_id: (timestamp, data)}
+        self._apikey_cache = {}  # Format: {apikey: (timestamp, data)}
         self._apikey_cache_lock = RLock()
+        self._session_invalidator = None
+
+    def set_session_invalidator(self, invalidator: Optional[Callable[[str], int]]) -> None:
+        self._session_invalidator = invalidator
+
+    def _invalidate_user_sessions(self, user: str) -> None:
+        if self._session_invalidator is not None:
+            self._session_invalidator(user)
 
     def _required_http_method_for_api(self, func_name: str) -> Optional[str]:
         """
@@ -298,10 +306,12 @@ class Api:
             ("proxy", "type"),
             ("proxy", "username"),
             ("reconnect", "script"),
+            ("webui", "allow_iframe"),
             ("webui", "host"),
             ("webui", "ssl_certfile"),
             ("webui", "ssl_keyfile"),
             ("webui", "ssl_certchain"),
+            ("webui", "trusted_proxies"),
             ("webui", "use_ssl"),
         }
 
@@ -588,7 +598,7 @@ class Api:
                     bleft=pyfile.get_bytes_left(),
                     size=pyfile.get_size(),
                     format_size=pyfile.format_size(),
-                    percent=pyfile.get_percent(),
+                    percent=int(pyfile.get_percent() + 0.5),
                     status=pyfile.status,
                     statusmsg=pyfile.get_status_name(),
                     format_wait=pyfile.format_wait(),
@@ -1392,7 +1402,7 @@ class Api:
 
         :return: bool
         """
-        self.pyload.last_client_connected = time.time()
+        self.pyload.last_client_connected = time.monotonic()
         task = self.pyload.captcha_manager.get_task()
         return task is not None
 
@@ -1406,7 +1416,7 @@ class Api:
         :param exclusive: unused
         :return: `CaptchaTask`
         """
-        self.pyload.last_client_connected = time.time()
+        self.pyload.last_client_connected = time.monotonic()
         task = self.pyload.captcha_manager.get_task()
         if task:
             task.set_waiting_for_user(exclusive=exclusive)
@@ -1429,7 +1439,7 @@ class Api:
         :param tid: task id
         :return: string
         """
-        self.pyload.last_client_connected = time.time()
+        self.pyload.last_client_connected = time.monotonic()
         t = self.pyload.captcha_manager.get_task_by_id(tid)
         return t.get_status() if t else ""
 
@@ -1443,7 +1453,7 @@ class Api:
         :param tid: task id
         :param result: captcha result
         """
-        self.pyload.last_client_connected = time.time()
+        self.pyload.last_client_connected = time.monotonic()
         task = self.pyload.captcha_manager.get_task_by_id(tid)
         if task:
             task.set_result(result)
@@ -1606,7 +1616,6 @@ class Api:
         return os.path.realpath(self.pyload.tempdir)
 
     #: Old API
-    @permission(Perms.ANY)
     @get
     def getUserData(self, username: str, password: str) -> OldUserData:
         """
@@ -1624,7 +1633,6 @@ class Api:
         else:
             return OldUserData()
 
-    @permission(Perms.ANY)
     @get
     def get_userdata(self, username: str, password: str) -> UserData:
         """
@@ -1792,18 +1800,21 @@ class Api:
         """
         deletes a user login.
         """
-        user_id = self.pyload.db.get_user_id(user)
-        if user_id:
-            with self._apikey_cache_lock:
+        with self._apikey_cache_lock:
+            user_id = self.pyload.db.get_user_id(user)
+            removed = self.pyload.db.remove_user(user)
+            if removed and user_id:
                 # Remove all cache entries where the cached_data has matching user_id
                 keys_to_delete = [
-                    key_id for key_id, (_, data) in self._apikey_cache.items()
+                    apikey for apikey, (_, data) in self._apikey_cache.items()
                     if data.get("user_id") == user_id
                 ]
-                for key_id in keys_to_delete:
-                    del self._apikey_cache[key_id]
+                for apikey in keys_to_delete:
+                    del self._apikey_cache[apikey]
 
-        return self.pyload.db.remove_user(user)
+        if removed:
+            self._invalidate_user_sessions(user)
+        return removed
 
     @legacy("changePassword")
     @post
@@ -1811,13 +1822,17 @@ class Api:
         """
         changes password for specific user.
         """
-        return self.pyload.db.change_password(user, oldpw, newpw)
+        changed = self.pyload.db.change_password(user, oldpw, newpw)
+        if changed:
+            self._invalidate_user_sessions(user)
+        return changed
 
     @legacy("setUserPermission")
     @post
     def set_user_permission(self, user: str, permission: int, role: int) -> None:
-        self.pyload.db.set_permission(user, permission)
-        self.pyload.db.set_role(user, role)
+        changed = self.pyload.db.set_user_permission(user, permission, role)
+        if changed:
+            self._invalidate_user_sessions(user)
 
     def generate_apikey(self, user: str, password: str, name: str = "API Key", expires: Optional[int] = None) -> dict[str, Any]:
         """
@@ -1888,21 +1903,27 @@ class Api:
         :param key_id: ID of the API key to delete
         :return: dict with `success` as True if deleted, False otherwise
         """
-        user_id = self.pyload.db.get_user_id(user)
-        if not user_id:
-            return {
-                "success": False,
-                "error": "Invalid username",
-            }
-        else:
+        with self._apikey_cache_lock:
+            user_id = self.pyload.db.get_user_id(user)
+            if not user_id:
+                return {
+                    "success": False,
+                    "error": "Invalid username",
+                }
+
             result = self.pyload.db.delete_user_apikey(user_id, key_id)
             if result:
-                with self._apikey_cache_lock:
-                    self._apikey_cache.pop(key_id, None)  # remove from cache
+                # Remove any cached entries that correspond to this key_id.
+                keys_to_delete = [
+                    apikey for apikey, (_, data) in self._apikey_cache.items()
+                    if data.get("id") == key_id
+                ]
+                for apikey in keys_to_delete:
+                    del self._apikey_cache[apikey]
 
-            return {
-                "success": result,
-            }
+        return {
+            "success": result,
+        }
 
     def check_apikey(self, apikey: str, ttl: int = 5 * 60) -> dict[str, Any]:
         """
@@ -1924,19 +1945,19 @@ class Api:
 
         key_id = int(apikey[4:4 + int(apikey[3])])
 
-        now = int(time.time() * 1000)
+        with self._apikey_cache_lock:
+            now = int(time.time() * 1000)
 
-        # Check cache first (skip if ttl is 0)
-        if ttl > 0:
-            with self._apikey_cache_lock:
-                if key_id in self._apikey_cache:
-                    cache_time, cached_data = self._apikey_cache[key_id]
+            # Check cache first (skip if ttl is 0)
+            if ttl > 0:
+                if apikey in self._apikey_cache:
+                    cache_time, cached_data = self._apikey_cache[apikey]
                     if now - cache_time < ttl * 1000:
                         # Cache hit - verify expiration in case key expired during cache window
                         expires_at = cached_data["expires_at"]
                         if 0 < expires_at <= now:
                             # Key expired, remove from cache and fail
-                            del self._apikey_cache[key_id]
+                            del self._apikey_cache[apikey]
                             return {
                                 "success": False,
                                 "error": "API key has expired",
@@ -1950,20 +1971,19 @@ class Api:
                             }
                     else:
                         # Cache expired - remove it
-                        del self._apikey_cache[key_id]
+                        del self._apikey_cache[apikey]
 
-        # Cache miss - query database
-        key_data = self.pyload.db.check_apikey(key_id, apikey[-43:])
-        if not key_data:
-            return {
-                "success": False,
-                "error": "Invalid or expired API key",
-            }
+            # Keep validation and cache population serialized with key deletion.
+            key_data = self.pyload.db.check_apikey(key_id, apikey[-43:])
+            if not key_data:
+                return {
+                    "success": False,
+                    "error": "Invalid or expired API key",
+                }
 
-        # Cache the successful validation result (only if ttl > 0)
-        if ttl > 0:
-            with self._apikey_cache_lock:
-                self._apikey_cache[key_id] = (now, key_data)
+            # Cache the successful validation result (only if ttl > 0).
+            if ttl > 0:
+                self._apikey_cache[apikey] = (now, key_data)
 
         self.pyload.db.update_apikey_last_used(key_id)
         return {

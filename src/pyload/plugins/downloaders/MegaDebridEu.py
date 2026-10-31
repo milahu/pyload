@@ -34,6 +34,7 @@ class MegaDebridEu(MultiDownloader):
         ("FoxyDarnec", "goupildavid[AT]gmail[DOT]com"),
     ]
 
+    # See https://www.mega-debrid.eu/index.php?page=api
     API_URL = "https://www.mega-debrid.eu/api.php"
 
     def api_request(self, action, get=None, post=None):
@@ -53,7 +54,7 @@ class MegaDebridEu(MultiDownloader):
             res = self.api_request(
                 "getLink",
                 get=args(
-                    token=self.account.info["data"]["cache_info"][self.account.user][
+                    token=self.account.get_data("cache_info")[self.account.user][
                         "token"
                     ]
                 ),

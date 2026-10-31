@@ -1,3 +1,4 @@
+import fnmatch
 import os
 import re
 import subprocess
@@ -12,7 +13,7 @@ from pyload.plugins.helpers import renice
 class UnRar(BaseExtractor):
     __name__ = "UnRar"
     __type__ = "extractor"
-    __version__ = "1.49"
+    __version__ = "1.50"
     __status__ = "testing"
 
     __config__ = [
@@ -107,12 +108,14 @@ class UnRar(BaseExtractor):
 
     def init(self):
         self.smallest = None
+        self.files_raw = None
         self.archive_encryption = None
+        self.archive_info = []
 
-    def verify(self, password=None):
+    def verify_password(self, password=None):
         #: First we check if the header (file list) is protected
-        #: if the header is protected, we cen verify the password very fast without hassle
-        #: otherwise, we find the smallest file in the archive and then try to extract it
+        #: if the header is protected, we cen verify the password very fast without hassle.
+        #: otherwise we find the smallest file in the archive and then try to extract it
         encrypted_header, encrypted_files = self._check_archive_encryption()
         if encrypted_header:
             p = self.call_cmd("l", "-v", self.filename, password=password)
@@ -194,9 +197,28 @@ class UnRar(BaseExtractor):
         command = "x" if self.fullpath else "e"
 
         # Validate file list BEFORE extraction to prevent path traversal
-        file_list = self.list(password)
+        file_list = self._list_raw(password)
         if file_list:
             self._validate_archive_entries(file_list)
+
+        # Validate free space BEFORE extraction
+        if file:
+            required_size = sum(
+                entry.get("size", 0)
+                for entry in self.archive_info
+                if entry["path"] == file
+            )
+        else:
+            required_size = sum(
+                entry.get("size", 0)
+                for entry in self.archive_info
+                if not any(
+                    fnmatch.fnmatch(entry["path"], exclusion.strip())
+                    for exclusion in self.excludefiles
+                )
+            )
+
+        self._check_free_space(required_size)
 
         p = self.call_cmd(command, self.filename, file, self.dest, password=password)
 
@@ -222,7 +244,7 @@ class UnRar(BaseExtractor):
         if p.returncode and p.returncode != 10:  #: RARX_NOFILES:
             raise ArchiveError(self._("Process return code: {}").format(p.returncode))
 
-        return file_list
+        return self.files
 
     def chunks(self):
         files = []
@@ -310,6 +332,12 @@ class UnRar(BaseExtractor):
 
         return self.archive_encryption
 
+    def _list_raw(self, password=None):
+        if not self.files_raw:
+            self._find_smallest_file(password)
+
+        return self.files_raw
+
     def _find_smallest_file(self, password=None):
         if not self.smallest:
             command = "v" if self.fullpath else "l"
@@ -317,17 +345,22 @@ class UnRar(BaseExtractor):
             out, err = (_r.strip() if _r else "" for _r in p.communicate())
 
             if "Cannot open" in err:
-                raise ArchiveError(_("Cannot open file"))
+                raise ArchiveError(self._("Cannot open file"))
 
             if err:  #: Only log error at this point
                 self.log_error(err)
 
             smallest = (None, 0)
             files = set()
+            files_raw = set()
+            archive_info = []
             f_grp = 5 if float(self.VERSION) >= 5 else 1
             for groups in self._RE_FILES.findall(out):
                 s = int(groups[2])
                 f = groups[f_grp].strip()
+
+                files_raw.add(f)
+                archive_info.append({"path": f, "size": s})
 
                 if smallest[1] == 0 or smallest[1] > s > 0:
                     smallest = (f, s)
@@ -351,6 +384,8 @@ class UnRar(BaseExtractor):
                 files.add(f)
 
             self.smallest = smallest
+            self.files_raw = list(files_raw)
             self.files = list(files)
+            self.archive_info = archive_info
 
         return self.smallest

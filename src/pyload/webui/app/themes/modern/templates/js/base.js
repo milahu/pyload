@@ -232,6 +232,83 @@ class UIHandler {
     this.initPasswordReveal();
     this.initButtonHandlers();
     this.initContainerDragAndDrop();
+    this.initFaviconBadge();
+  }
+
+  initFaviconBadge() {
+    const faviconNormal = "{{theme_static('img/favicon.ico')}}";
+    let faviconBadge = null;
+    const faviconDomElement = document.getElementById('app-favicon');
+    const faviconImage = new Image();
+    faviconImage.src = faviconNormal;
+
+    let previousCaptchaState = true;
+    let isTabActive = true;
+    let isBadgeVisible = false;
+
+    const drawFaviconBadge = () => {
+      const size = 128;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      const dotRadius = Math.max(10, Math.round(size * 0.20));
+      const x = size - dotRadius - 6;
+      const y = size - dotRadius - 6;
+
+      ctx.clearRect(0, 0, size, size);
+      ctx.drawImage(faviconImage, 0, 0, size, size);
+      ctx.fillStyle = '#d9534f';
+      ctx.strokeStyle = '#8b3a36';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, dotRadius, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      return canvas.toDataURL('image/png');
+    };
+
+    this.updateFaviconBadge = (showBadge) => {
+      const isNewCaptcha = !previousCaptchaState && showBadge;
+      previousCaptchaState = showBadge;
+
+      if (!faviconDomElement) return;
+
+      if (isTabActive) {
+        if (isBadgeVisible) {
+          faviconDomElement.href = faviconNormal;
+          isBadgeVisible = false;
+        }
+        return;
+      }
+
+      if (isNewCaptcha) {
+        // Image not ready yet, defer drawing the badge until it's loaded
+        if (!faviconImage.complete || faviconImage.naturalWidth === 0) {
+          faviconImage.onload = () => this.updateFaviconBadge(showBadge);
+          return;
+        }
+
+        if (!faviconBadge) {
+          faviconBadge = drawFaviconBadge();
+        }
+        faviconDomElement.href = faviconBadge;
+        isBadgeVisible = true;
+      }
+    };
+
+    const setTabActive = (active) => {
+      if (isTabActive === active) return;
+      isTabActive = active;
+      this.updateFaviconBadge(previousCaptchaState);
+    };
+
+    $(window).on('focus', () => setTabActive(true));
+    $(window).on('blur',  () => setTabActive(false));
+    $(document).on('visibilitychange', () => setTabActive(!document.hidden));
   }
 
   initContainerDragAndDrop() {
@@ -530,15 +607,15 @@ class UIHandler {
       const visibleModals = $('.modal.in');
       if (visibleModals.length > 0) {
         const activeModal = visibleModals.first();
-        const modalTitle = activeModal.find('.modal-title');
+        const modalHeader = activeModal.find('.modal-header');
         const modalBody = activeModal.find('.modal-body');
         const modalFooter = activeModal.find('.modal-footer');
 
-        const originalTitle = modalTitle.text().trim();
+        const originalTitle = modalHeader.text().trim();
         const originalBody = modalBody.html().trim();
 
         modalFooter.addClass("hidden");
-        modalTitle.text('{{_("Confirmation")}}');
+        modalHeader.text('{{_("Confirmation")}}');
         modalBody.html(
           '<p>' + question + '</p>' +
           `<div style="margin-bottom: 25px;"><input type="checkbox" id="dontAskAgain2"><label for="dontAskAgain2" style="font-weight: normal; margin-left: 4px; user-select: none;">{{_("Don't ask again")}}</label></div>` +
@@ -549,7 +626,7 @@ class UIHandler {
         modalBody.one('click', '#okButton, #cancelButton', (event) => {
           const answer = $(event.target).attr("id") === "okButton";
           const dontAskAgain = $('#dontAskAgain2').is(':checked');
-          modalTitle.text(originalTitle);
+          modalHeader.text(originalTitle);
           modalBody.html(originalBody);
           modalFooter.removeClass('hidden');
           if (dontAskAgain) {
@@ -700,6 +777,7 @@ const loadJsonToContent = (message) => {
   $("#actives").text(message.active);
   $("#actives_from").text(message.queue);
   $("#actives_total").text(message.total);
+  uiHandler.updateFaviconBadge(Boolean(message.captcha));
   const $cap_info = $(".cap_info");
   if (message.captcha) {
     const notificationVisible = ($cap_info.css("display") !== "none");

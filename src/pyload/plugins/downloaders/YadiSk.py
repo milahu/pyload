@@ -1,5 +1,4 @@
 import json
-import random
 import re
 
 from ..base.simple_downloader import SimpleDownloader
@@ -8,10 +7,10 @@ from ..base.simple_downloader import SimpleDownloader
 class YadiSk(SimpleDownloader):
     __name__ = "YadiSk"
     __type__ = "downloader"
-    __version__ = "0.12"
+    __version__ = "0.13"
     __status__ = "testing"
 
-    __pattern__ = r"https?://yadi\.sk/d/[\w\-]+"
+    __pattern__ = r"https?://(?:yadi\.sk|disk\.yandex\.(?:ru|com))/d/[\w\-]+"
     __config__ = [
         ("enabled", "bool", "Activated", True),
         ("use_premium", "bool", "Use premium account if available", True),
@@ -26,32 +25,43 @@ class YadiSk(SimpleDownloader):
 
     OFFLINE_PATTERN = r"Nothing found"
 
+    API_URL = "https://disk.yandex.ru/public/api/"
+
+    def api_request(self, method, **kwargs):
+        post_data = json.dumps(kwargs)
+        post_data = re.sub(r'[{":/= ,}]', lambda m: f"%{ord(m.group(0)):2X}", post_data)
+        self.req.http.set_header("X-Requested-With", "XMLHttpRequest")
+        self.req.http.set_header("Content-Type", "text/plain")
+        data = self.load(self.API_URL + method, post=post_data)
+        return json.loads(data)
+
     def get_info(self, url="", html=""):
         info = super(SimpleDownloader, self).get_info(url, html)
 
         if html:
-            if "idclient" not in info:
-                info["idclient"] = ""
-                for _ in range(32):
-                    info["idclient"] += random.choice("0123456abcdef")
-
             m = re.search(
-                r'<script id="models-client" type="application/json">(.+?)</script>',
+                r'<script type="application/json" id="store-prefetch">(.+?)</script>',
                 html,
+                re.DOTALL
             )
             if m is not None:
-                api_data = json.loads(m.group(1))
                 try:
-                    for sect in api_data:
-                        if "model" in sect:
-                            if sect["model"] == "config":
-                                info["version"] = sect["data"]["version"]
-                                info["sk"] = sect["data"]["sk"]
+                    api_data = json.loads(m.group(1))
+                    info["sk"] = api_data.get("environment", {}).get("sk")
+                    leaf_item = [v for k,v in api_data.get("resources", {}).items() if not v.get("children")][0]
+                    if leaf_item.get("type") == "dir":
+                        folder_info = self.api_request(
+                            "fetch-list",
+                            hash=leaf_item.get("path", ""),
+                            offset=0,
+                            withSizes=True,
+                            sk=info["sk"]
+                        )
+                        leaf_item = [f for f in folder_info.get("resources", []) if f.get("type", "") == "file"][0]
 
-                            elif sect["model"] == "resource":
-                                info["id"] = sect["data"]["id"]
-                                info["size"] = sect["data"]["meta"]["size"]
-                                info["name"] = sect["data"]["name"]
+                    info["name"] = leaf_item.get("name")
+                    info["size"] = leaf_item.get("meta", {}).get("size")
+                    info["path"] = leaf_item.get("path")
 
                 except Exception as exc:
                     info["status"] = 8
@@ -69,23 +79,8 @@ class YadiSk(SimpleDownloader):
         self.chunk_limit = 1
 
     def handle_free(self, pyfile):
-        if any(True for k in ["id", "sk", "version", "idclient"] if k not in self.info):
+        if any(True for k in ["path", "sk"] if k not in self.info):
             self.error(self._("Missing JSON data"))
 
-        try:
-            self.data = self.load(
-                "https://yadi.sk/models/",
-                get={"_m": "do-get-resource-url"},
-                post={
-                    "idClient": self.info["idclient"],
-                    "version": self.info["version"],
-                    "_model.0": "do-get-resource-url",
-                    "sk": self.info["sk"],
-                    "id.0": self.info["id"],
-                },
-            )
-
-            self.link = json.loads(self.data)["models"][0]["data"]["file"]
-
-        except Exception:
-            pass
+        api_data = self.api_request("download-url", inline=False, hash=self.info["path"], sk=self.info["sk"])
+        self.link = api_data.get("data", {}).get("url")

@@ -1,3 +1,4 @@
+import fnmatch
 import os
 import re
 import subprocess
@@ -12,7 +13,7 @@ from pyload.plugins.helpers import renice
 class SevenZip(BaseExtractor):
     __name__ = "SevenZip"
     __type__ = "extractor"
-    __version__ = "0.40"
+    __version__ = "0.42"
     __status__ = "testing"
 
     __description__ = """7-Zip extractor plugin"""
@@ -109,23 +110,16 @@ class SevenZip(BaseExtractor):
     def init(self):
         self.smallest = None
         self.archive_encryption = None
+        self.archive_info = []
 
-    def verify(self, password=None):
-        #: First we check if the header (file list) is protected
-        #: if the header is protected, we cen verify the password very fast without hassle
-        #: otherwise, we find the smallest file in the archive and then try to extract it
+    def verify_password(self, password=None):
+        # First we check if the header (file list) is protected
+        # if the header is protected, we can verify the password very fast without hassle.
+        # otherwise, we find the smallest file in the archive and then try to extract it
 
         encrypted_header, encrypted_files = self._check_archive_encryption()
         if encrypted_header:
-            p = self.call_cmd("l", "-slt", self.filename, password=password)
-            out, err = (r.strip() if r else "" for r in p.communicate())
-
-            if err:
-                if self._RE_ENCRYPTED_HEADER.search(err):
-                    raise PasswordError
-
-                else:
-                    raise ArchiveError(err)
+            self._get_archive_info(password)
 
         elif encrypted_files:
             #: search for smallest file and try to extract it to verify password
@@ -137,7 +131,7 @@ class SevenZip(BaseExtractor):
                 extracted = safejoin(self.dest, smallest if self.fullpath else os.path.basename(smallest))
                 try:
                     os.remove(extracted)
-                except OSError as exc:
+                except OSError:
                     pass
                 self.extract(password=password, file=smallest)
 
@@ -148,7 +142,7 @@ class SevenZip(BaseExtractor):
             except (PasswordError, CRCError, ArchiveError) as exc:
                 try:
                     os.remove(extracted)
-                except OSError as exc:
+                except (OSError, NameError):
                     pass
 
                 raise exc
@@ -175,13 +169,33 @@ class SevenZip(BaseExtractor):
         command = "x" if self.fullpath else "e"
 
         # Validate file list BEFORE extraction to prevent path traversal
-        file_list = self.list(password)
+        archive_info = self._get_archive_info(password)
+        file_list = [entry["path"] for entry in archive_info]
         if file_list:
             self._validate_archive_entries(file_list)
 
         # Detect symlinks BEFORE extraction
         self._detect_7zip_symlinks(password)
 
+        # Validate free space BEFORE extraction
+        if file:
+            required_size = sum(
+                entry.get("size", 0)
+                for entry in archive_info
+                if entry["path"] == file
+            )
+        else:
+            required_size = sum(
+                entry.get("size", 0)
+                for entry in archive_info
+                if not any(
+                    fnmatch.fnmatch(entry["path"], exclusion)
+                    for exclusion in self.excludefiles
+                )
+            )
+        self._check_free_space(required_size)
+
+        # Now do actual extraction
         p = self.call_cmd(command, "-o" + self.dest, self.filename, file, password=password)
 
         #: Communicate and retrieve stderr
@@ -204,6 +218,8 @@ class SevenZip(BaseExtractor):
         # Post-extraction paranoid check: validate any symlinks that were created
         self._validate_extracted_symlinks()
 
+        return self.list(password)
+
     def chunks(self):
         files = []
         dir, name = os.path.split(self.filename)
@@ -223,7 +239,8 @@ class SevenZip(BaseExtractor):
 
     def list(self, password=None):
         if not self.files:
-            self._find_smallest_file(password=password)
+            self._get_archive_info(password)
+            self.files = [entry["full_path"] for entry in self.archive_info]
 
         return self.files
 
@@ -286,33 +303,84 @@ class SevenZip(BaseExtractor):
 
         return self.archive_encryption
 
-    def _find_smallest_file(self, password=None):
-        if not self.smallest:
-            p = self.call_cmd("l", self.filename, password=password)
+    def _get_archive_info(self, password=None):
+        if not self.archive_info:
+            p = self.call_cmd("l", "-slt", self.filename, password=password)
             out, err = (r.strip() if r else "" for r in p.communicate())
 
-            if any(e in err for e in ("Can not open", "cannot find the file")):
-                raise ArchiveError(self._("Cannot open file"))
+            if err:
+                if self._RE_ENCRYPTED_HEADER.search(err):
+                    raise PasswordError
+
+                elif any(e in err for e in ("Can not open", "cannot find the file")):
+                    raise ArchiveError(self._("Cannot open file"))
+
+                else:
+                    raise ArchiveError(err)
 
             if p.returncode > 1:
                 raise ArchiveError(self._("Process return code: {}").format(p.returncode))
 
-            smallest = (None, 0)
-            files = set()
-            for groups in self._RE_FILES.findall(out):
-                s = int(groups[3])
-                f = groups[-1].strip()
+            # Parse detailed list format (-slt)
+            # The format is:
+            # Path = filename
+            # Size = 1024
+            # Attributes = ...
+            # <blank line>
 
-                if smallest[1] == 0 or smallest[1] > s > 0:
-                    smallest = (f, s)
+            entries = []
 
+            # Split the text into potential entry blocks (each starting with "Path =")
+            blocks = re.split(r'\n(?=Path = )', out.strip())
+
+            for file_block in blocks[2:]:  # Skip header block
+                lines = file_block.strip().split('\n')
+                file_entry = {}
+
+                for line in lines:
+                    if '=' in line:
+                        key, value = [x.strip() for x in line.split('=', 1)]
+                        file_entry[key] = value
+
+                if 'Path' not in file_entry:
+                    continue
+
+                file_path = file_entry['Path']
+                size_str = file_entry.get('Size', '0')
+                attributes = file_entry.get('Attributes', "")
+
+                try:
+                    file_size = int(size_str)
+                except ValueError:
+                    file_size = 0
+
+                # Build full destination path
+                f = file_path
                 if not self.fullpath:
                     f = os.path.basename(f)
-                f = safejoin(self.dest, f)
-                files.add(f)
+                full_path = safejoin(self.dest, f, traversal=False)  # We check for path traversal on extraction
+
+                entries.append({
+                    'path': file_path,
+                    'full_path': full_path,
+                    'size': file_size,
+                    'attributes': attributes,
+                })
+
+            self.archive_info = entries
+
+        return self.archive_info
+
+    def _find_smallest_file(self, password=None):
+        if not self.smallest:
+            smallest = (None, 0)
+
+            archive_info = self._get_archive_info(password)
+            for entry in archive_info:
+                if smallest[1] == 0 or (smallest[1] > entry["size"] > 0):
+                    smallest = (entry["path"], entry["size"])
 
             self.smallest = smallest
-            self.files = list(files)
 
         return self.smallest
 
@@ -327,30 +395,14 @@ class SevenZip(BaseExtractor):
         symlinks = []
 
         try:
-            p = self.call_cmd("l", "-slt", self.filename, password=password)
-            out, err = (r.strip() if r else "" for r in p.communicate())
+            archive_info = self._get_archive_info(password)
 
-            if p.returncode > 1:
-                self.log_warning(f"Cannot list archive details: {err}")
-                return  # Silently skip symlink detection on list errors
-
-            # Parse the detailed list output
-            # Format: Path = <filename>
-            #         Attributes = <perms with 'l' for symlinks>
-            current_file = None
-            for line in out.split('\n'):
-                # Track current file
-                if line.startswith('Path = '):
-                    current_file = line[7:].strip()
-
-                # Check if this file is a symlink by looking at Attributes
-                # Format: Attributes = l rwxr-xr-x or with 'l' somewhere in attributes
-                elif line.startswith('Attributes = ') and current_file:
-                    attrs = line[13:].strip()
-                    # Symlinks are indicated by 'l' in the attributes
-                    if attrs.startswith('l') or ' l ' in attrs or attrs.endswith('l'):
-                        symlinks.append(current_file)
-                        self.log_warning(f"Found symlink in archive: {current_file}")
+            for entry in archive_info:
+                current_file = entry["path"]
+                attrs = entry["attributes"]  # Attributes = <perms with 'l' for symlinks>
+                if 'l' in attrs:
+                    symlinks.append(current_file)
+                    self.log_warning(f"Found symlink in archive: {current_file}")
 
             if symlinks:
                 raise ArchiveError(

@@ -11,6 +11,7 @@ import os
 
 import flask
 import jinja2
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.serving import WSGIRequestHandler
 
 from .blueprints import BLUEPRINTS
@@ -19,6 +20,7 @@ from .extensions import EXTENSIONS, THEMES
 from .filters import TEMPLATE_FILTERS
 from .globals import TEMPLATE_GLOBALS
 from .handlers import ERROR_HANDLERS
+from .helpers import clear_all_user_sessions
 from .processors import CONTEXT_PROCESSORS
 
 
@@ -63,9 +65,10 @@ class App:
 
         @app.after_request
         def set_security_headers(response):
-            response.headers["Content-Security-Policy"] = "frame-ancestors 'self';"
+            if not app.config["PYLOAD_API"].get_config_value("webui", "allow_iframe"):
+                response.headers["Content-Security-Policy"] = "frame-ancestors 'self';"
+                response.headers["X-Frame-Options"] = "SAMEORIGIN"
             response.headers["X-Content-Type-Options"] = "nosniff"
-            response.headers["X-Frame-Options"] = "SAMEORIGIN"
             response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
             response.headers["Permissions-Policy"] = "geolocation=(), camera=(), microphone=()"
             if app.config["PYLOAD_API"].get_config_value("webui", "use_ssl"):
@@ -110,6 +113,8 @@ class App:
     def _configure_session(cls, app, path_prefix):
         api = app.config["PYLOAD_API"]
 
+        api.set_session_invalidator(lambda user: clear_all_user_sessions(user))
+
         use_ssl = api.get_config_value("webui", "use_ssl")
         webui_port = api.get_config_value("webui", "port")
         cookie_prefix = f"{'' if use_ssl is False else '__Host-' if path_prefix == r'/' else '__Secure-'}"
@@ -135,6 +140,14 @@ class App:
         app.config["PYLOAD_API"] = pycore.api
 
     @classmethod
+    def _configure_proxy_fix(cls, app, trusted_proxy_count):
+        if trusted_proxy_count < 0:
+            raise ValueError("Trusted proxy count must not be negative")
+
+        if trusted_proxy_count:
+            app.wsgi_app = ProxyFix(app.wsgi_app, x_for=trusted_proxy_count)
+
+    @classmethod
     def _configure_logging(cls, app, pycore):
         # Inject our custom logger
         app.logger = pycore.log.getChild("webui")
@@ -145,6 +158,7 @@ class App:
         cls._configure_logging(app, pycore)
         cls._configure_api(app, pycore)
         cls._configure_config(app, develop)
+        cls._configure_proxy_fix(app, pycore.config.get("webui", "trusted_proxies"))
         cls._configure_templating(app)
         cls._configure_json_encoding(app)
         cls._configure_session(app, path_prefix or r"/")
