@@ -507,6 +507,9 @@ class FileDatabaseMethods:
         query = "UPDATE links SET status=3,error='' WHERE status IN (6, 8, 9)"
         if link_ids:
             query += " AND id IN (" + ",".join(["?"] * len(link_ids)) + ")"
+        else:
+            # restart failed links only in queue 1 (the "active downloads" queue)
+            query += " AND package IN (SELECT id FROM packages WHERE queue = 1)"
         args = link_ids
         # print(f"restart_failed: query: {query}")
         self.pyload.log.debug(f"restart_failed: query: {query}")
