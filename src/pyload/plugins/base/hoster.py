@@ -443,6 +443,9 @@ class BaseHoster(BasePlugin):
         """
         Fail and give msg.
         """
+        if isinstance(msg, Exception):
+            msg = f"{type(msg).__name__}: {msg}"
+
         msg = msg.strip()
 
         if msg:
