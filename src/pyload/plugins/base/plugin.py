@@ -162,6 +162,8 @@ class BasePlugin:
         """
         Fail and give msg.
         """
+        if isinstance(msg, Exception):
+            msg = f"{type(msg).__name__}: {msg}"
         raise Fail(msg)
 
     def load(
