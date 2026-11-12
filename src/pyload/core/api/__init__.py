@@ -1296,6 +1296,18 @@ class Api:
         """
         self.pyload.files.reorder_package(package_id, position)
 
+    @legacy("orderPackages")
+    @permission(Perms.MODIFY)
+    @post
+    def order_packages(self, package_ids: List[int], position: int) -> None:
+        """
+        Gives packages a new position.
+
+        :param package_ids: package ids
+        :param position:
+        """
+        self.pyload.files.reorder_packages(package_ids, position)
+
     @legacy("orderFile")
     @permission(Perms.MODIFY)
     @post
