@@ -588,7 +588,12 @@ class FileManager:
         # AttributeError: 'Core' object has no attribute 'log_info'
         # self.pyload.log_info(f"packageorder_by_id: {len(packageorder_by_id)}, self.package_cache: {len(self.package_cache)}")
         for pack in self.package_cache.values():
-            pack.order = packageorder_by_id[pack.id]
+            try:
+                pack.order = packageorder_by_id[pack.id]
+            except KeyError:
+                # packageorder_by_id[pack.id] is missing
+                # because the order of this package did not change
+                pass
         self.pyload.db.commit()
 
         es = [InsertEvent("pack", p.id, position, "collector" if not p.queue else "queue") for p in ps]
