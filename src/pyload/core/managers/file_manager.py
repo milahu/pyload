@@ -490,6 +490,31 @@ class FileManager:
 
     @lock
     @change
+    def restart_files(self, file_ids):
+        """
+        restart files.
+        """
+        for file_id in file_ids:
+            file = self.cache.get(file_id)
+            if file is None:
+                continue
+            file.status = 3
+            file.name = file.url
+            file.error = ""
+            file.abort_download()
+
+        self.pyload.db.restart_files(file_ids)
+
+        for file_id in file_ids:
+            package = self.get_file(file_id).package()
+            queue_id = package.queue
+            queue_name = "collector" if queue_id == 0 else "queue"
+            # TODO pass queue_id or package to UpdateEvent
+            e = UpdateEvent("file", file_id, queue_name)
+            self.pyload.event_manager.add_event(e)
+
+    @lock
+    @change
     def set_package_location(self, package_id, queue):
         """
         move package to queue / collector.

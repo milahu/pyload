@@ -410,6 +410,16 @@ class FileDatabaseMethods:
         self.c.execute('UPDATE links SET status=3,error="" WHERE id=?', (str(id),))
 
     @style.async_
+    def restart_files(self, file_ids: List[int]):
+        if not file_ids:
+            return
+        placeholders = ("?," * len(file_ids))[:-1]
+        self.c.execute(
+            f'UPDATE links SET status=3, error="" WHERE id IN ({placeholders})',
+            file_ids
+        )
+
+    @style.async_
     def restart_package(self, id):
         self.c.execute("UPDATE links SET status=3 WHERE package=?", (str(id),))
 

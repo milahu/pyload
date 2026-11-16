@@ -1180,6 +1180,17 @@ class Api:
         """
         self.pyload.files.restart_file(int(file_id))
 
+    @legacy("restartFiles")
+    @permission(Perms.MODIFY)
+    @post
+    def restart_files(self, file_ids: List[int]) -> None:
+        """
+        Reset the status of multiple files, so they will be downloaded again.
+
+        :param file_ids:  file IDs
+        """
+        self.pyload.files.restart_files(file_ids)
+
     @legacy("recheckPackage")
     @permission(Perms.MODIFY)
     @post
