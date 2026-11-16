@@ -48,8 +48,9 @@ class DeleteFinished(BaseAddon):
 
     @style.queue
     def delete_finished(self, mode):
+        placeholders = ("?," * len(mode))[:-1]
         self.c.execute(
-            f"DELETE FROM packages WHERE NOT EXISTS(SELECT 1 FROM links WHERE package=packages.id AND status NOT IN ({','.join('?' * len(mode))}))",
+            f"DELETE FROM packages WHERE NOT EXISTS(SELECT 1 FROM links WHERE package=packages.id AND status NOT IN ({placeholders}))",
             mode,
         )
         self.c.execute(
