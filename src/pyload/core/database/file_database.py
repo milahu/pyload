@@ -472,11 +472,13 @@ class FileDatabaseMethods:
         # plugins which are processed in collector
         pre = ("DLC", "TXT", "CCF", "RSDF")
 
+        placeholders_occupied = ("?," * len(occupied))[:-1]
+        placeholders_pre = ("?," * len(pre))[:-1]
         self.c.execute(
             f"""
             SELECT l.id FROM links as l
             INNER JOIN packages as p ON l.package=p.id
-            WHERE ((p.queue=1 AND l.plugin NOT IN ({",".join("?" * len(occupied))})) OR l.plugin IN ({",".join("?" * len(pre))})) AND l.status IN (2,3,14)
+            WHERE ((p.queue=1 AND l.plugin NOT IN ({placeholders_occupied})) OR l.plugin IN ({placeholders_pre})) AND l.status IN (2,3,14)
             ORDER BY p.packageorder ASC, l.linkorder ASC
             LIMIT 5
             """,
