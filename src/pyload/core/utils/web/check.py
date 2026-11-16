@@ -216,9 +216,11 @@ def get_public_address(addr_type="ipv4"):
             sv = random.choice(services)
             ip = get_url(sv[0])
             ip = re.match(sv[1], ip).group(1)
-            break
+            if is_global_address(ip):
+                break
         except Exception:
-            ip = ""
             time.sleep(0.5)
+
+        ip = ""
 
     return ip

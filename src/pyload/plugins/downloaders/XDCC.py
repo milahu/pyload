@@ -7,6 +7,7 @@ import struct
 import threading
 import time
 from enum import IntEnum
+from urllib.parse import unquote
 
 import certifi
 
@@ -14,7 +15,8 @@ from pyload.core.network.exceptions import Abort
 from pyload.core.utils import format
 from pyload.core.utils.convert import to_bytes, to_str
 from pyload.core.utils.struct.lock import lock
-from pyload.core.utils.web.check import get_public_address
+from pyload.core.utils.web.check import get_public_address, is_global_address
+from pyload.core.utils.web.convert import host_to_ip
 
 from ..base.addon import threaded
 from ..base.downloader import BaseDownloader
@@ -59,6 +61,21 @@ class IRC:
     def _data_available(self):
         fdset = select.select([self.irc_sock], [], [], 0)
         return self.irc_sock in fdset[0]
+
+    def _send_line(self, line):
+        """
+        Send a single IRC line terminated by CRLF.
+        Guards against CRLF injection by stripping internal newlines.
+        """
+        if not self.irc_sock:
+            return
+
+        clean_line = line.rstrip("\r\n")
+        if "\r" in clean_line or "\n" in clean_line:
+            self.plugin.log_warning(self._("CRLF injection attempt detected in IRC command"))
+            clean_line = clean_line.replace("\r", "").replace("\n", "")
+
+        self.irc_sock.send(to_bytes(clean_line + "\r\n"))
 
     def _get_response_line(self, timeout=5):
         start_time = time.monotonic()
@@ -131,12 +148,17 @@ class IRC:
             )
             return False
 
+        host_ips = host_to_ip(host)
+        if not any(is_global_address(ip) for ip in host_ips):
+            self.plugin.log_error(self._("IRC Server {} resolves to private or reserved IP addresses received").format(host))
+            return False
+
         self.plugin.log_info(self._("Connecting to: {}:{}").format(host, port))
         self.host = host
         self.port = port
 
         self.irc_sock.settimeout(90)
-        self.irc_sock.connect((host, port))
+        self.irc_sock.connect((host_ips[0], port))
         self.irc_sock.settimeout(None)
 
         #: flush input
@@ -148,7 +170,7 @@ class IRC:
         if use_ssl == IRC.SSLUsage.STARTTLS:
             if self.get_server_capabilities("tls", force_query=True, end_caps=False):
                 self.plugin.log_debug(self._("TLS via STARTTLS supported, attempting connection upgrade"))
-                self.irc_sock.send(to_bytes("STARTTLS\r\n"))
+                self._send_line("STARTTLS")
                 start_time = time.monotonic()
                 while time.monotonic() - start_time < 30:
                     origin, command, args = self.get_irc_command()
@@ -201,10 +223,8 @@ class IRC:
             if not self._get_response_line():
                 break
 
-        self.irc_sock.send(to_bytes("NICK {}\r\n".format(self.nick)))
-        self.irc_sock.send(
-            to_bytes("USER {} {} bla :{}\r\n".format(self.ident, host, self.realname))
-        )
+        self._send_line("NICK {}".format(self.nick))
+        self._send_line("USER {} {} bla :{}".format(self.ident, host, self.realname))
 
         start_time = time.monotonic()
         while time.monotonic() - start_time < 30:
@@ -245,7 +265,7 @@ class IRC:
             self.plugin.log_info(
                 self._("Disconnecting from {}:{}").format(self.host, self.port)
             )
-            self.irc_sock.send(b"QUIT :byebye\r\n")
+            self._send_line("QUIT :byebye")
             self.plugin.log_debug("Disconnected")
             self.connected = False
 
@@ -275,7 +295,8 @@ class IRC:
                 self.plugin.log_info(self._("Querying server for {} capability").format(capability))
 
             if force_query or not self.server_capabilities:
-                self.irc_sock.send(to_bytes("CAP LS\r\nPING :{}\r\n".format(self.host)))
+                self._send_line("CAP LS")
+                self._send_line("PING :{}".format(self.host))
                 self.sent_caps = True
                 start_time = time.monotonic()
                 while time.monotonic() - start_time < 30:
@@ -302,7 +323,7 @@ class IRC:
 
     def end_capabilities_mode(self):
         if self.sent_caps:
-            self.irc_sock.send(to_bytes("CAP END\r\n"))
+            self._send_line("CAP END")
             self.sent_caps = False
 
     @lock
@@ -314,7 +335,7 @@ class IRC:
 
             if command == "PING":
                 self.plugin.log_debug(f"[{args[0]}] Ping? Pong!")
-                self.irc_sock.send(to_bytes("PONG :{}\r\n".format(args[0])))
+                self._send_line("PONG :{}".format(args[0]))
 
             elif origin and command == "PRIVMSG":
                 sender_nick = origin.split("@")[0].split("!")[0]
@@ -331,24 +352,16 @@ class IRC:
                             self.plugin.log_debug(
                                 self._("[{}] CTCP VERSION").format(sender_nick)
                             )
-                            self.irc_sock.send(
-                                to_bytes(
-                                    "NOTICE {} :\x01VERSION {}\x01\r\n".format(
-                                        sender_nick, "pyLoad! IRC Interface"
-                                    )
-                                )
-                            )
+                            self._send_line("NOTICE {} :\x01VERSION {}\x01".format(sender_nick, "pyLoad! IRC Interface"))
 
                         elif ctcp_command == "TIME":
                             self.plugin.log_debug(
                                 self._("[{}] CTCP TIME").format(sender_nick)
                             )
-                            self.irc_sock.send(
-                                to_bytes(
-                                    "NOTICE {} :\x01{}\x01\r\n".format(
-                                        sender_nick,
-                                        time.strftime("%a %b %d %H:%M:%S %Y"),
-                                    )
+                            self._send_line(
+                                "NOTICE {} :\x01{}\x01".format(
+                                    sender_nick,
+                                    time.strftime("%a %b %d %H:%M:%S %Y"),
                                 )
                             )
 
@@ -356,13 +369,7 @@ class IRC:
                             self.plugin.log_debug(
                                 self._("[{}] Ping? Pong!").format(sender_nick)
                             )
-                            self.irc_sock.send(
-                                to_bytes(
-                                    "NOTICE {} :\x01PING {}\x01\r\n".format(
-                                        sender_nick, ctcp_args
-                                    )
-                                )
-                            )  # NOTE: PING is not a typo
+                            self._send_line("NOTICE {} :\x01PING {}\x01".format(sender_nick, ctcp_args))  # NOTE: PING is not a typo
 
                         else:
                             break
@@ -380,7 +387,7 @@ class IRC:
         chan = "#" + chan if chan[0] != "#" else chan
 
         self.plugin.log_info(self._("Joining channel {}").format(chan))
-        self.irc_sock.send(to_bytes("JOIN {}\r\n".format(chan)))
+        self._send_line("JOIN {}".format(chan))
 
         start_time = time.monotonic()
         while time.monotonic() - start_time < 30:
@@ -406,14 +413,12 @@ class IRC:
 
     @lock
     def send_private_message(self, bot, message, ctcp=False):
+        clean_bot = bot.replace("\r", " ").replace("\n", " ").split()[0]
+        clean_msg = message.replace("\r", "").replace("\n", "")
         if ctcp:
-            self.irc_sock.send(
-                to_bytes("PRIVMSG {} :\x01{}\x01\r\n".format(bot, message))
-            )
+            self._send_line("PRIVMSG {} :\x01{}\x01".format(clean_bot, clean_msg))
         else:
-            self.irc_sock.send(
-                to_bytes("PRIVMSG {} :{}\r\n".format(bot, message))
-            )
+            self._send_line("PRIVMSG {} :{}".format(clean_bot, clean_msg))
     @lock
     def nickserv_identify(self, password):
         self.plugin.log_info(self._("Authenticating nickname"))
@@ -437,12 +442,7 @@ class IRC:
                 return
 
             # Private message from bot to us?
-            if (
-                "@" not in origin
-                or (origin[0 : len(bot)] != bot and origin.split("@")[1] != bot_host)
-                or args[0][0 : len(self.nick)] != self.nick
-                or command not in ("PRIVMSG", "NOTICE")
-            ):
+            if not self.is_message_from_target(origin, command, args, bot, bot_host):
                 continue
 
             text = args[1]
@@ -476,11 +476,8 @@ class IRC:
                 return
 
             # Private message from bot to us?
-            if (
-                "@" not in origin
-                or (origin[0 : len(bot)] != bot and origin.split("@")[1] != bot_host)
-                or args[0][0 : len(self.nick)] != self.nick
-                or command not in ("PRIVMSG", "NOTICE", "INVITE")
+            if not self.is_message_from_target(
+                origin, command, args, bot, bot_host, allowed_commands=("PRIVMSG", "NOTICE", "INVITE")
             ):
                 continue
 
@@ -504,7 +501,7 @@ class IRC:
     @lock
     def is_bot_online(self, bot):
         self.plugin.log_info(self._("Checking if bot '{}' is online").format(bot))
-        self.irc_sock.send(to_bytes("WHOIS {}\r\n".format(bot)))
+        self._send_line("WHOIS {}".format(bot))
 
         start_time = time.monotonic()
         while time.monotonic() - start_time < 30:
@@ -546,6 +543,38 @@ class IRC:
 
             else:
                 return None
+
+    def is_message_from_target(
+        self, origin, command, args, target_bot, target_host=None, allowed_commands=("PRIVMSG", "NOTICE")
+    ):
+        """
+        Validates that an incoming IRC message originated from the expected bot/service
+        and was privately addressed to our client nickname.
+        """
+        if not origin or not command or not args or len(args) < 2:
+            return False
+
+        if command not in allowed_commands:
+            return False
+
+        if args[0].lower() != self.nick.lower():
+            return False
+
+        sender_nick = origin.split("!", 1)[0] if "!" in origin else origin.split("@", 1)[0]
+        sender_host = origin.split("@", 1)[1] if "@" in origin else None
+
+        if sender_nick.lower() != target_bot.lower():
+            return False
+
+        if target_host and (not sender_host or sender_host.lower() != target_host.lower()):
+            self.plugin.log_warning(
+                self._("Rejected message from '{}' due to host mismatch ('{}' != '{}')").format(
+                    sender_nick, sender_host or "unknown", target_host
+                )
+            )
+            return False
+
+        return True
 
     @lock
     def xdcc_request_pack(self, bot, pack):
@@ -614,19 +643,7 @@ class IRC:
                 origin, command, args = self.get_irc_command()
 
                 # Private message from bot to us?
-                if (
-                    origin
-                    and command
-                    and args
-                    and "@" in origin
-                    and (
-                        origin[0 : len(bot)] == bot
-                        or bot_host
-                        and origin.split("@")[1] == bot_host
-                    )
-                    and args[0][0 : len(self.nick)] == self.nick
-                    and command in ("PRIVMSG", "NOTICE")
-                ):
+                if self.is_message_from_target(origin, command, args, bot, bot_host):
 
                     text = args[1]
                     sender_nick = origin.split("@")[0].split("!")[0]
@@ -673,18 +690,7 @@ class IRC:
             origin, command, args = self.get_irc_command()
 
             # Private message from bot to us?
-            if (
-                origin
-                and command
-                and args
-                and (
-                    origin[0 : len(bot)] == bot
-                    or bot_host
-                    and origin.split("@")[1] == bot_host
-                )
-                and args[0][0 : len(self.nick)] == self.nick
-                and command in ("PRIVMSG", "NOTICE")
-            ):
+            if self.is_message_from_target(origin, command, args, bot, bot_host):
 
                 text = args[1]
                 pack_info = text.split()
@@ -721,7 +727,7 @@ class IRC:
 class XDCC(BaseDownloader):
     __name__ = "XDCC"
     __type__ = "downloader"
-    __version__ = "0.57"
+    __version__ = "0.58"
     __status__ = "testing"
 
     __pattern__ = r"(?P<PROTO>xdccs?)://(?P<SERVER>.*?)/#?(?P<CHAN>.*?)/(?P<BOT>.*?)/#?(?P<PACK>\d+)/?"
@@ -802,6 +808,9 @@ class XDCC(BaseDownloader):
     def xdcc_initiate_passive(self, xdcc_token):
         # Send CTCP DCC SEND reply with our ip/port
         external_ip = get_public_address()
+        if not external_ip:
+            self.log_error(self._("Could not determine external IP address for passive XDCC"))
+            return
         ip_int = struct.unpack("!I", socket.inet_aton(external_ip))[0]
 
         self.irc_client.send_private_message(
@@ -816,12 +825,39 @@ class XDCC(BaseDownloader):
             ctcp=True
         )
 
+    def _parse_dcc_ip(self, raw_ip_str):
+        """
+        Safely convert a raw DCC integer string to a dotted-quad IPv4 string.
+        Returns the IP string, or None if invalid or out of bounds.
+        """
+        try:
+            raw_ip = int(raw_ip_str)
+            if not (0 <= raw_ip <= 0xFFFFFFFF):
+                return None
+            return socket.inet_ntoa(struct.pack("!I", raw_ip))
+        except (struct.error, ValueError, OverflowError):
+            return None
+
     def process(self, pyfile):
         proto = self.info["pattern"]["PROTO"]
-        server = self.info["pattern"]["SERVER"]
-        chan = self.info["pattern"]["CHAN"]
-        bot = self.info["pattern"]["BOT"]
-        pack = self.info["pattern"]["PACK"]
+        server = unquote(self.info["pattern"]["SERVER"]).strip()
+        chan = unquote(self.info["pattern"]["CHAN"]).strip()
+        bot = unquote(self.info["pattern"]["BOT"]).strip()
+        pack = self.info["pattern"]["PACK"].strip()
+
+        # Enforce no CR, LF, or NULL bytes in URL components
+        for name, val in (("SERVER", server), ("CHAN", chan), ("BOT", bot), ("PACK", pack)):
+            if any(c in val for c in ("\r", "\n", "\0")):
+                self.fail(self._("Invalid characters (CRLF/NULL) in URL component: {}").format(name))
+
+        # Validate channel name (no spaces, control chars, colons, or commas)
+        clean_chan = chan[1:] if chan.startswith("#") else chan
+        if not clean_chan or any(c in clean_chan for c in (" ", ",", "\x07", ":")):
+            self.fail(self._("Invalid IRC channel name in URL: {}").format(chan))
+
+        # Validate bot nickname (alphanumeric and allowed IRC special characters)
+        if not re.match(r"^[a-zA-Z0-9_\-\[\]\\^{}|`]+$", bot):
+            self.fail(self._("Invalid IRC bot nickname in URL: {}").format(bot))
 
         tls_opts = [
             _x.split("/")
@@ -1079,23 +1115,19 @@ class XDCC(BaseDownloader):
             return
 
         #: ERR_CANTSENDTOUSER
-        if command == "531" and args[0] == nick and args[1] == bot:
+        if (
+            command == "531"
+            and len(args) >= 3
+            and args[0].casefold() == nick.casefold()
+            and args[1].casefold() == bot.casefold()
+        ):
             text = args[2]
             self.log_error("<{}> {}".format(bot, text))
             self.fail(text)
 
         # Private message from bot to us?
         bot_host = self.irc_client.get_bot_host(bot)
-        if (
-            "@" not in origin
-            or (
-                origin[0 : len(bot)] != bot
-                and bot_host
-                and origin.split("@")[1] != bot_host
-            )
-            or args[0][0 : len(nick)] != nick
-            or command not in ("PRIVMSG", "NOTICE")
-        ):
+        if not self.irc_client.is_message_from_target(origin, command, args, bot, bot_host):
             return
 
         text = args[1]
@@ -1120,7 +1152,6 @@ class XDCC(BaseDownloader):
         # Check for regular DCC SEND
         m = self.RE_XDCC.match(text)
         if m:
-            ip = socket.inet_ntoa(struct.pack("!I", int(m.group("IP"))))
             self.dcc_port = int(m.group("PORT"))
             self.dcc_file_name = m.group("NAME")
             file_size = int(m.group("SIZE") or 0)
@@ -1139,13 +1170,22 @@ class XDCC(BaseDownloader):
 
             else:
                 self.log_debug(self._("Received XDCC SEND (unsecured) request"))
+                ip = self._parse_dcc_ip(m.group("IP"))
+                if not ip or not is_global_address(ip):
+                    self.log_error(self._("Private or reserved IP addresses received from bot"))
+                    self.fail(self._("Private or reserved IP addresses received from bot"))
+
                 self.do_download(ip, self.dcc_port, False,  self.dcc_file_name, file_size)
 
         else:
             # Check for SSL DCC SSEND
             m = self.RE_XDCC_SSEND.match(text)
             if m:
-                ip = socket.inet_ntoa(struct.pack("!I", int(m.group("IP"))))
+                ip = self._parse_dcc_ip(m.group("IP"))
+                if not ip or not is_global_address(ip):
+                    self.log_error(self._("Private or reserved IP addresses received from bot"))
+                    self.fail(self._("Private or reserved IP addresses received from bot"))
+
                 self.dcc_port = int(m.group("PORT"))
                 self.dcc_file_name = m.group("NAME")
                 file_size = int(m.group("SIZE") or 0)
