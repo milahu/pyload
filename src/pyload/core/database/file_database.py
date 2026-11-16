@@ -525,8 +525,9 @@ class FileDatabaseMethods:
     @style.queue
     def restart_failed(self, link_ids=[]):
         query = "UPDATE links SET status=3,error='' WHERE status IN (6, 8, 9)"
+        placeholders = ("?," * len(link_ids))[:-1]
         if link_ids:
-            query += " AND id IN (" + ",".join(["?"] * len(link_ids)) + ")"
+            query += f" AND id IN ({placeholders})"
         else:
             # restart failed links only in queue 1 (the "active downloads" queue)
             query += " AND package IN (SELECT id FROM packages WHERE queue = 1)"
