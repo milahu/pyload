@@ -1187,9 +1187,26 @@ class Api:
         """
         Reset the status of multiple files, so they will be downloaded again.
 
+        restart_files is deprecated in favor of restart_links.
+        "Links" are remote files, maybe downloaded.
+        "Files" are local files, already downloaded.
+
         :param file_ids:  file IDs
         """
         self.pyload.files.restart_files(file_ids)
+
+    @legacy("restartLinks")
+    @permission(Perms.MODIFY)
+    @post
+    def restart_links(self, link_ids: List[int]) -> None:
+        """
+        Reset the status of multiple links, so they will be downloaded again.
+
+        Renamed from restart_files.
+
+        :param link_ids:  link IDs
+        """
+        self.pyload.files.restart_files(link_ids)
 
     @legacy("recheckPackage")
     @permission(Perms.MODIFY)
