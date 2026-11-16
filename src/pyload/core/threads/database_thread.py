@@ -3,10 +3,12 @@ import os
 import queue
 import shutil
 import sqlite3
+import uuid
 from threading import Event, Thread
 
 from ... import exc_logger
 from ..database import ApikeyDatabaseMethods, FileDatabaseMethods, StorageDatabaseMethods, UserDatabaseMethods
+from ..database import SyncStoreMethods
 from ..utils.struct.style import style
 
 # DATABASE VERSION
@@ -240,6 +242,41 @@ class DatabaseThread(Thread):
         )
         self.c.execute('CREATE INDEX IF NOT EXISTS "apikeys_userid_index" ON apikeys(user_id)')
 
+        # for src/pyload/core/database/sync_store.py
+        self.c.execute(
+            "CREATE TABLE IF NOT EXISTS sync_metadata (\n"
+            "    key TEXT PRIMARY KEY,\n"
+            "    value TEXT NOT NULL\n"
+            ")"
+        )
+        self.c.execute(
+            "CREATE TABLE IF NOT EXISTS essential_changes (\n"
+            "    revision INTEGER PRIMARY KEY AUTOINCREMENT,\n"
+            "    entity TEXT NOT NULL,\n"
+            "    operation TEXT NOT NULL,\n"
+            "    entity_id INTEGER,\n"
+            "    payload TEXT,\n"
+            "    created_at INTEGER NOT NULL DEFAULT (unixepoch())\n"
+            ")\n"
+        )
+        self.c.execute(
+            "CREATE INDEX IF NOT EXISTS essential_changes_entity_idx\n"
+            "ON essential_changes(entity, entity_id)"
+        )
+        self.c.execute(
+            "INSERT OR IGNORE INTO sync_metadata (key, value)\n"
+            "VALUES ('database_id', ?)",
+            (str(uuid.uuid4()),),
+        )
+        self.c.execute(
+            "INSERT OR IGNORE INTO sync_metadata (key, value)\n"
+            "VALUES ('minimum_revision', '0')"
+        )
+        self.c.execute(
+            "INSERT OR IGNORE INTO sync_metadata (key, value)\n"
+            "VALUES ('current_revision', '0')"
+        )
+
         self.c.execute(
             'CREATE VIEW IF NOT EXISTS "pstats" AS \
         SELECT p.id AS id, SUM(l.size) AS sizetotal, COUNT(l.id) AS linkstotal, linksdone, sizedone\
@@ -350,3 +387,4 @@ DatabaseThread.register_sub(FileDatabaseMethods)
 DatabaseThread.register_sub(UserDatabaseMethods)
 DatabaseThread.register_sub(StorageDatabaseMethods)
 DatabaseThread.register_sub(ApikeyDatabaseMethods)
+DatabaseThread.register_sub(SyncStoreMethods)

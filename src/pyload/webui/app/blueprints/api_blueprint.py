@@ -22,7 +22,8 @@ log = getLogger(APPID)
 @bp.route("/api/<func>/<args>", methods=["GET", "POST"], endpoint="rpc")
 # @apiver_check
 @apikey_auth
-@rate_limit(count=100, period=60)  #: 100/minute
+# @rate_limit(count=100, period=60)  #: 100/minute
+@rate_limit(count=20, period=1)  #: 20/second
 def rpc(func, args=""):
     if func.startswith("_"):
         flask.flash(f"Invalid API call '{func}'")
@@ -88,6 +89,13 @@ def rpc(func, args=""):
             if "csrf_token" in kwargs:
                 kwargs.pop("csrf_token")
             get_response = getattr(api, func)
+            if 0:
+                # debug
+                log.debug(f"api={api} func={func} get_response={get_response} args={args} kwargs={kwargs}")
+                # args=[
+                #   "{'core': {'download': {'chunks': '1'",
+                #   " 'max_downloads': '5'}}}"
+                # ]
             response = jsonify(get_response(*args, **kwargs))
     except RequestEntityTooLarge:
         return jsonify({"error": "Request body too large"}), 413

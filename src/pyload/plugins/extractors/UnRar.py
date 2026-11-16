@@ -359,11 +359,23 @@ class UnRar(BaseExtractor):
                 s = int(groups[2])
                 f = groups[f_grp].strip()
 
+                # FIXME which "f" is used by self._validate_archive_entries
+                # -> file_list = self._list_raw(password)
+                # -> def _list_raw
+                # -> self.files_raw or self._find_smallest_file(password)
+                # -> def _find_smallest_file
+                # -> self.smallest
+
+                # TODO where do we need files_raw? these are just the "unjoined" file paths inside the archive
+
                 files_raw.add(f)
                 archive_info.append({"path": f, "size": s})
 
+                # fix: move down after: f = safejoin(self.dest, f)
+                r'''
                 if smallest[1] == 0 or smallest[1] > s > 0:
                     smallest = (f, s)
+                '''
 
                 # https://github.com/pyload/pyload/pull/4753
                 # no!
@@ -381,7 +393,36 @@ class UnRar(BaseExtractor):
                     f = os.path.basename(f)
                 '''
                 f = safejoin(self.dest, f)
+                self.log_debug(f"UnRar._find_smallest_file: safejoin -> f={f}")
+                '''
+
+                r'''
+                self.make_it_break = True
+                # self.make_it_break = False
+                if getattr(self, "make_it_break", False):
+                    self.log_debug(f"UnRar._find_smallest_file: make_it_break=True")
+                    r'''
+                    if not self.fullpath:
+                        f = os.path.basename(f)
+                        self.log_debug(f"UnRar._find_smallest_file: basename -> f={f}")
+                    '''
+                    f = safejoin(self.dest, f)
+                    self.log_debug(f"UnRar._find_smallest_file: safejoin -> f={f}")
+                else:
+                    self.log_debug(f"UnRar._find_smallest_file: make_it_break=False")
+                    self.log_debug(f"UnRar._find_smallest_file: no safejoin -> f={f}")
+                '''
+                f = safejoin(self.dest, f)
+
                 files.add(f)
+
+                # now "f" is the absolute file path
+                if smallest[1] == 0 or smallest[1] > s > 0:
+                    smallest = (f, s)
+
+            # test: ArchiveError: Attempted path traversal in archive
+            # files.add("/bad/absolute/path")
+            # files.add("../../../bad/relative/path")
 
             self.smallest = smallest
             self.files_raw = list(files_raw)

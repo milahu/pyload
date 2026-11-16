@@ -638,8 +638,6 @@ class FileManager:
         for id_packageorder_list in id_packageorder_list_by_queue:
             for (id, packageorder) in id_packageorder_list:
                 packageorder_by_id[id] = packageorder
-        # AttributeError: 'Core' object has no attribute 'log_info'
-        # self.pyload.log_info(f"packageorder_by_id: {len(packageorder_by_id)}, self.package_cache: {len(self.package_cache)}")
         for pack in self.package_cache.values():
             try:
                 pack.order = packageorder_by_id[pack.id]

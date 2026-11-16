@@ -165,6 +165,7 @@ class BaseHoster(BasePlugin):
 
         self.setup_base()
         self.grab_info()
+        self.log_debug(f"BaseHoster._login: calling self.setup")
         self.setup()
         self.check_status()
 

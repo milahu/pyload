@@ -235,6 +235,9 @@ class Api:
         :param config: config[section][category][option] = value
         """
         # self.pyload.log.debug(f"set_config_values: config={config}")
+        if 1:
+            # debug
+            self.pyload.log.debug(f"set_config_values: config={config}")
         # error_name = "TypeError"
         error_name = "ValueError"
         errors = dict()
@@ -2041,3 +2044,56 @@ class Api:
             "success": True,
             "data": key_data,
         }
+
+    @permission(Perms.LIST)
+    @get
+    def get_state_snapshot(self) -> dict[str, Any]:
+        """Read a consistent essential-state snapshot and its revision.
+
+        Requires core.sync_store and SQL readers installed by the database
+        integration. Readers must use the transaction connection supplied by
+        SyncStore.snapshot(), not an independent DB connection.
+        """
+        store = self.pyload.sync_store
+        return store.snapshot(
+            # TODO why
+            self.pyload.sync_read_packages,
+            self.pyload.sync_read_links,
+        )
+
+    @permission(Perms.LIST)
+    @get
+    def get_essential_changes(
+            self, database_id: str, since_revision: int, limit: int = 1000
+        ) -> dict[str, Any]:
+        """Non-destructive, paginated replay of committed essential changes."""
+        # TODO what is database_id
+        return self.pyload.sync_store.get_changes(
+            database_id, since_revision, limit
+        )
+
+    @permission(Perms.LIST)
+    @get
+    def get_runtime_state(self) -> dict[str, Any]:
+        """Ephemeral active downloads, annotated with essential-state cursor.
+
+        The integration must coordinate the cursor and active-download read
+        with essential mutations before exposing this endpoint in production.
+        """
+        store = self.pyload.sync_store
+        with self.pyload.sync_state_lock:
+            return {
+                "database_id": store._meta("database_id"),
+                "revision": store.revision(),
+                "active_downloads": [
+                    {
+                        "fid": f.id,
+                        "package_id": f.packageid,
+                        "speed": f.get_speed(),
+                        "eta": f.get_eta(),
+                        "bytes_left": f.get_bytes_left(),
+                    }
+                    for f in self.pyload.thread_manager.get_active_files()
+                    if isinstance(f, PyFile)
+                ],
+            }

@@ -10,3 +10,4 @@ from .apikey_database import ApikeyDatabaseMethods
 from .file_database import FileDatabaseMethods
 from .storage_database import StorageDatabaseMethods
 from .user_database import UserDatabaseMethods
+from .sync_store import SyncStoreMethods

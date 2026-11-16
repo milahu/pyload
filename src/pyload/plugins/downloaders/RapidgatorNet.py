@@ -22,6 +22,7 @@ class RapidgatorNet(SimpleDownloader):
     __config__ = [
         ("enabled", "bool", "Activated", True),
         ("use_premium", "bool", "Use premium account if available", True),
+        # ("max_parallel_premium", "int", "Maximum parallel premium downloads", 3),
         ("fallback", "bool", "Fallback to free download if premium fails", True),
         ("chk_filesize", "bool", "Check file size", True),
         ("max_wait", "int", "Reconnect if waiting time is greater than minutes", 10),
@@ -91,6 +92,13 @@ class RapidgatorNet(SimpleDownloader):
             self.retry(wait=60)
 
     def setup(self):
+        if 1:
+            # force premium
+            self.premium = True
+        if 1:
+            # debug
+            self.log_debug(f"RapidgatorNet.setup: self.premium={self.premium}")
+            # assert self.premium == True
         self.resume_download = self.multi_dl = self.premium
         self.chunk_limit = -1 if self.premium else 1
 

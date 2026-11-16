@@ -209,6 +209,7 @@ class BaseExtractor(BasePlugin):
             if "\x00" in entry:
                 raise ArchiveError(f"Archive entry contains Null: {entry}")
 
+            # FIXME do this only on windows: sys.platform == "win"
             # Reject if entry includes a drive letter
             drive = ntpath.splitdrive(entry)[0]
             if drive:
@@ -251,7 +252,6 @@ class BaseExtractor(BasePlugin):
                 raise ArchiveError(f"Attempted path traversal in archive: {entry} parent_path={parent_path!r} child_path={child_path!r}")
             '''
 
-            r'''
             # Split and check for traversal
             parts = [part for part in normalized.split('/')]
             self.log_debug(f'_validate_archive_entries: parts={parts}')
@@ -271,7 +271,6 @@ class BaseExtractor(BasePlugin):
                     level += 1
                 if level < 0:
                     raise ArchiveError(f"Attempted path traversal in archive: {entry}")
-            '''
 
             # no! file_list has absolute file paths
             r'''
@@ -280,9 +279,34 @@ class BaseExtractor(BasePlugin):
             '''
             # TODO replace full_path with normalized
             full_path = normalized
+            # yes! file_list has relative file paths
+            # NOTE os.path.realpath also does file path normalization
+            # and absolute path resolution relative to the workdir:
+            # >>> import os; os.chdir("/"); os.path.realpath(os.path.join("a", "../b"))
+            # '/b'
+            # Construct full extraction path
+            full_path = os.path.realpath(os.path.join(self.dest, normalized))
 
             # test: path traversal
             # full_path = "/bad/path"
+
+            self.log_debug(f'_validate_archive_entries: entry={entry}')
+            self.log_debug(f'_validate_archive_entries: self.dest={self.dest}')
+            self.log_debug(f'_validate_archive_entries: full_path={full_path}')
+            try:
+                res = is_within_directory(self.dest, full_path)
+            except Exception as exc:
+                res = f"{type(exc).__name__}: {exc}"
+            self.log_debug(f'_validate_archive_entries: is_within_directory(self.dest, full_path) -> {res}')
+            r'''
+            normalized=VA_-_Unification_EP-(SWR004)-WEB-FLAC-2021/01_jarring_-_desires.flac
+            normalized.startswith("/")=False
+            entry=VA_-_Unification_EP-(SWR004)-WEB-FLAC-2021/01_jarring_-_desires.flac
+            self.dest=/media/ZYDFB0M9_24TB/Downloads/pyLoad/VA_-_Unification_EP_2021_FLAC/
+            full_path=VA_-_Unification_EP-(SWR004)-WEB-FLAC-2021/01_jarring_-_desires.flac
+            is_within_directory(self.dest, full_path) -> False
+            '''
+            # -> full_path should be absolute path
 
             # Verify the file would be extracted within destination
             try:

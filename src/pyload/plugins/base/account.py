@@ -132,6 +132,7 @@ class BaseAccount(BasePlugin):
 
         self.req = self.pyload.request_factory.get_request(self.classname, self.user)
 
+        self.log_debug(f"BaseAccount.login: calling self.setup")
         self.setup()
 
         timestamp = time.time()

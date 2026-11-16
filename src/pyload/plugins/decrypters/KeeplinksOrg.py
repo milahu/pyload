@@ -119,6 +119,22 @@ class KeeplinksOrg(BaseDecrypter):
         )
 
     def decrypt(self, pyfile):
+
+        if 1:
+            # debug
+            # self.log_debug(f"pyfile: {dir(pyfile)}")
+            # pyfile: ['__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__firstlineno__', '__format__', '__ge__', '__getattribute__', '__getstate__', '__gt__',
+            # '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__',
+            # '__static_attributes__', '__str__', '__subclasshook__', '__weakref__',
+            # '_name', '_size',
+            # 'abort', 'abort_download', 'active', 'check_if_processed', 'delete', 'error', 'finish_if_done', 'format_eta', 'format_size', 'format_wait', 'get_bytes_left', 'get_eta', 'get_percent', 'get_size', 'get_speed', 'get_status_name', 'has_plugin', 'has_status', 'id', 'init_plugin', 'lock', 'm', 'manager', 'maxprogress',
+            # 'name', 'notify_change', 'order', 'package', 'packageid', 'plugin', 'pluginclass', 'pluginmodule', 'pluginname', 'progress', 'reconnected', 'release', 'set_custom_status', 'set_name', 'set_progress', 'set_status', 'size', 'status', 'statusname', 'sync', 'to_db_dict', 'to_dict', 'url', 'wait_until']
+            # self.log_debug(f"pyfile.name={pyfile.name}")
+            # self.log_debug(f"pyfile.package={dir(pyfile.package())}")
+            # pyfile.package=['__class__', '__delattr__', '__dict__', '__dir__', '__doc__', '__eq__', '__firstlineno__', '__format__', '__ge__', '__getattribute__', '__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__le__', '__lt__', '__module__', '__ne__', '__new__', '__reduce__', '__reduce_ex__', '__repr__', '__setattr__', '__sizeof__', '__static_attributes__', '__str__', '__subclasshook__', '__weakref__', '_folder', 'delete', 'folder', 'get_children', 'id', 'm', 'manager',
+            # 'name', 'notify_change', 'order', 'password', 'queue', 'release', 'set_finished', 'site', 'sync', 'to_dict']
+            self.log_debug(f"pyfile.package().name={pyfile.package().name}")
+
         pyfile.url = replace_patterns(pyfile.url, self.URL_REPLACEMENTS)
 
         self.data = self._filecrypt_load_url(pyfile.url)

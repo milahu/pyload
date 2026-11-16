@@ -40,12 +40,34 @@ class SafelinkingNet(BaseDecrypter):
         self.req.http.set_header("Accept", "application/json, text/plain, */*")
         self.req.http.set_header("Content-Type", "application/json")
 
+        if 0:
+            # debug
+            self.log_debug(f"post_data={post_data}")
+
         try:
             res = json.loads(self.load(url, post=json.dumps(post_data)))
+            if 0:
+                # debug
+                _res = self.load(url, post=json.dumps(post_data))
+                self.log_debug(f"_res={_res}")
+                res = json.loads(_res)
+                self.log_debug(f"res={res}")
 
-        except (BadHeader, ValueError) as exc:
+        # except (BadHeader, ValueError) as exc:
+        # TODO better than "except AttributeError"?
+        except (BadHeader, ValueError, AttributeError, json.decoder.JSONDecodeError) as exc:
+            #   File "src/pyload/plugins/base/hoster.py", line 446, in fail
+            #     msg = msg.strip()
+            #           ^^^^^^^^^
+            # AttributeError: 'JSONDecodeError' object has no attribute 'strip'
+
+            if 0:
+                self.log_debug(f"exc: {type(exc).__name__}: {exc}")
+
             self.log_error(exc)
+            # done: better: "def fail" should accept exception objects, not just strings
             self.fail(exc)
+            # self.fail(f"{type(exc).__name__}: {exc}")
 
         # Headers back to normal
         self.req.http.clear_headers(use_defaults=True)
