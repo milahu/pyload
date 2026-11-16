@@ -490,11 +490,12 @@ class FileDatabaseMethods:
         """
         returns pyfile ids with suited plugins.
         """
+        placeholders = ("?," * len(plugins))[:-1]
         self.c.execute(
             f"""
             SELECT l.id FROM links as l
             INNER JOIN packages as p ON l.package=p.id
-            WHERE l.plugin IN ({",".join("?" * len(plugins))}) AND l.status IN (2,3,14)
+            WHERE l.plugin IN ({placeholders}) AND l.status IN (2,3,14)
             ORDER BY p.packageorder ASC, l.linkorder ASC LIMIT 5
             """,
             plugins,
