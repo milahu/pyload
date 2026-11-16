@@ -265,7 +265,7 @@ class FileDatabaseMethods:
             data,
         )
         urls = [x[3] for x in data]
-        placeholders = ','.join('?' * len(urls))  # Create a parameterized query with the correct number of placeholders
+        placeholders = ("?," * len(urls))[:-1]
         self.c.execute(f"SELECT id FROM links WHERE url IN ({placeholders})", urls)
 
         ids = [int(row[0]) for row in self.c.fetchall()]
