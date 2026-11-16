@@ -421,7 +421,7 @@ class FileDatabaseMethods:
 
     @style.async_
     def restart_package(self, id):
-        self.c.execute("UPDATE links SET status=3 WHERE package=?", (str(id),))
+        self.c.execute("UPDATE links SET status=3, error="" WHERE package=?", (str(id),))
 
     @style.async_
     def restart_packages(self, package_ids: List[int]):
