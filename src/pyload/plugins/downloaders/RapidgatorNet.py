@@ -23,7 +23,13 @@ class RapidgatorNet(SimpleDownloader):
         ("enabled", "bool", "Activated", True),
         ("use_premium", "bool", "Use premium account if available", True),
         # ("max_parallel_premium", "int", "Maximum parallel premium downloads", 3),
-        ("fallback", "bool", "Fallback to free download if premium fails", True),
+        # https://github.com/pyload/pyload/issues/4802
+        # RapidgatorNet with premium account fails to detect offline links
+        # fallback=True makes no sense...
+        # offline links (status=1) are marked as "temp. offline" (status=6)
+        # so they are restarted in restart_failed
+        # ("fallback", "bool", "Fallback to free download if premium fails", True),
+        ("fallback", "bool", "Fallback to free download if premium fails", False),
         ("chk_filesize", "bool", "Check file size", True),
         ("max_wait", "int", "Reconnect if waiting time is greater than minutes", 10),
     ]
