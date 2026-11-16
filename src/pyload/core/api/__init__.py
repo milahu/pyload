@@ -1169,6 +1169,17 @@ class Api:
         """
         self.pyload.files.restart_package(int(package_id))
 
+    @legacy("restartPackages")
+    @permission(Perms.MODIFY)
+    @post
+    def restart_packages(self, package_ids: List[int]) -> None:
+        """
+        Restart multiple packages, restart all their files.
+
+        :param package_ids: package IDs
+        """
+        self.pyload.files.restart_packages(package_ids)
+
     @legacy("restartFile")
     @permission(Perms.MODIFY)
     @post

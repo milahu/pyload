@@ -469,6 +469,34 @@ class FileManager:
 
     @lock
     @change
+    def restart_packages(self, package_ids):
+        """
+        restart packages.
+        """
+        for file in list(self.cache.values()):
+            if not file.packageid in package_ids:
+                continue
+            self.restart_file(file.id)
+
+        self.pyload.db.restart_packages(package_ids)
+
+        for package_id in self.package_cache:
+            if not package_id in package_ids:
+                continue
+            package = self.package_cache[package_id]
+            # TODO package.set_finished should be a method
+            package.set_finished = False
+
+        for package_id in package_ids:
+            package = self.get_package(package_id)
+            queue_id = package.queue
+            queue_name = "collector" if queue_id == 0 else "queue"
+            # TODO pass queue_id or package to UpdateEvent
+            e = UpdateEvent("pack", package_id, queue_name)
+            self.pyload.event_manager.add_event(e)
+
+    @lock
+    @change
     def restart_file(self, id):
         """
         restart file.
