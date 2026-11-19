@@ -205,11 +205,53 @@ def disposition(disposition_value, location=None, fallback_url=None):
             except (LookupError, UnicodeEncodeError) as exc:
                 raise ValueError(f"Content-Disposition: | error: {exc}")
 
-        # Try URL decoding
+        assert isinstance(_filename, str)
+
+        # Recover the original header bytes.
+        # based on
+        # doc/ChatGPT-Python-filename-encoding-analysis-20261119-1554.md
         try:
-            return urllib.parse.unquote(_filename, encoding="iso-8859-1", errors="strict")
+            # example:
+            # _filename =  '\xd0\x9e'
+            # raw_bytes = b'\xd0\x9e'
+            # utf8_str  =  '\u041e'
+            raw_bytes = _filename.encode("latin-1")
+        except UnicodeEncodeError:
+            # _filename contains characters outside Latin-1.
+            # _filename is already a valid Unicode string, not Latin-1-mapped Unicode bytes.
+
+            # Try URL decoding
+            # Browser compatibility: percent-encoded filenames.
+            # Do not decode encoded path separators or NUL.
+            if re.search(r"%[0-9a-fA-F]{2}", _filename):
+                unquoted_str = urllib.parse.unquote(_filename, encoding="utf-8", errors="strict")
+                if not any(c in unquoted_str for c in ("/", "\\", "\x00")):
+                    _filename = unquoted_str
+            return _filename
+
+        assert isinstance(raw_bytes, bytes)
+
+        # Try URL decoding
+        # Browser compatibility: percent-encoded filenames.
+        # Do not decode encoded path separators or NUL.
+        if re.search(rb"%[0-9a-fA-F]{2}", raw_bytes):
+            unquoted_bytes = urllib.parse.unquote_to_bytes(raw_bytes)
+            if not any(c in unquoted_bytes for c in (b"/", b"\\", b"\x00")):
+                raw_bytes = unquoted_bytes
+
+        assert isinstance(raw_bytes, bytes)
+
+        # Prefer UTF-8 for raw non-ASCII bytes.
+        try:
+            utf8_str = raw_bytes.decode("utf-8")
+            assert isinstance(utf8_str, str)
+            return utf8_str
         except UnicodeDecodeError:
-            raise ValueError("Content-Disposition: | error: Error when decoding string from iso-8859-1.")
+            # Preserve Latin-1 legacy filenames.
+            latin1_str = raw_bytes.decode("latin-1")
+            assert isinstance(latin1_str, str)
+            return latin1_str
+
 
     def _extract_attachment_filename(_disposition_type, _location, _fallback_url):
         """Extract filename for attachment disposition type."""
