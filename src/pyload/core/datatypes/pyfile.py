@@ -30,6 +30,9 @@ def _set_size(self, value):
 
 def _set_name(self, value):
     self._name = purge.name(value, sep="")
+    # repr: escape nonprintable chars for logging
+    if self._name != repr(self._name):
+        self._name = repr(self._name)
 
 
 class PyFile:
@@ -47,6 +50,10 @@ class PyFile:
         self.url = url
         self._name = None
         self.name = name
+
+        # repr: escape nonprintable chars for logging
+        if self.name != repr(self.name):
+            self.name = repr(self.name)
 
         self._size = None
         self.size = size
