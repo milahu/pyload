@@ -196,14 +196,34 @@ def disposition(disposition_value, location=None, fallback_url=None):
 
         _filename = _disposition_params['filename']
 
+        assert isinstance(_filename, str)
+
         # Try RFC 2047 encoding
-        m = re.search(r'=\?([^?]+)\?([QB])\?([^?]*)\?=', _filename, re.I)
-        if m is not None:
+        # based on
+        # doc/ChatGPT-Python-filename-encoding-analysis-20261119-1554.md
+        # TODO how is this better than the old code?
+        #
+        # the old code decodes only the first part
+        # because it assumes there is only one part
+        #
+        # the old code falls back to data.decode(None)
+        # which is equivalent to data.decode("utf8")
+        # the new code falls back to data.decode("ascii")
+        # maybe the old code should use re.fullmatch?
+        #
+        # RFC 2047 compatibility (nonstandard for HTTP).
+        if re.search(r"=\?[^?]+\?[bqBQ]\?[^?]*\?=", _filename):
             try:
-                data, encoding = parse_mime_header(m.group(0))[0]
-                return data.decode(encoding)
-            except (LookupError, UnicodeEncodeError) as exc:
-                raise ValueError(f"Content-Disposition: | error: {exc}")
+                mime_parts = parse_mime_header(_filename)
+                mime_str = "".join(
+                    part.decode(charset or "ascii")
+                    if isinstance(part, bytes) else part
+                    for part, charset in mime_parts
+                )
+                assert isinstance(mime_str, str)
+                return mime_str
+            except (UnicodeError, LookupError):
+                pass
 
         assert isinstance(_filename, str)
 
