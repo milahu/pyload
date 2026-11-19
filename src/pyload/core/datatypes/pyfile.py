@@ -31,7 +31,7 @@ def _set_size(self, value):
 def _set_name(self, value):
     self._name = purge.name(value, sep="")
     # repr: escape nonprintable chars for logging
-    if self._name != repr(self._name):
+    if self._name != repr(self._name)[1:-1]:
         self._name = repr(self._name)
 
 
@@ -52,7 +52,7 @@ class PyFile:
         self.name = name
 
         # repr: escape nonprintable chars for logging
-        if self.name != repr(self.name):
+        if self.name != repr(self.name)[1:-1]:
             self.name = repr(self.name)
 
         self._size = None
